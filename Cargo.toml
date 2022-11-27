@@ -9,6 +9,7 @@ description = "My program! (TODO: Edit this description)"
 [dependencies]
 # General
 miette = "5"
+chrono = "0.4.22"
 
 # Logging
 env_logger = "0.9"
@@ -16,9 +17,10 @@ log = "0.4"
 
 # Tokio
 tokio = { version = "1", features = ["full"] }
-
-# Shutdown
 tokio-graceful-shutdown = "0.11.1"
+
+# Async libraries
+async-cron-scheduler = "1.0.0"
 
 # Command line arguments
 clap = { version = "4.0", features = ["derive"] }

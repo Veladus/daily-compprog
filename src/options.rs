@@ -7,6 +7,10 @@ pub struct Options {
     /// Increase verbosity, and can be used multiple times
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
+
+    /// Cron options for message schedule
+    #[arg(long, default_value_t = String::from("0 8 * * * *"))]
+    pub messages_cron: String,
 }
 
 pub fn parse() -> Options {
