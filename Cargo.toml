@@ -1,0 +1,24 @@
+[package]
+name = "daily-compprog"
+version = "0.1.0"
+edition = "2021"
+description = "My program! (TODO: Edit this description)"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# General
+miette = "5"
+
+# Logging
+env_logger = "0.9"
+log = "0.4"
+
+# Tokio
+tokio = { version = "1", features = ["full"] }
+
+# Shutdown
+tokio-graceful-shutdown = "0.11.1"
+
+# Command line arguments
+clap = { version = "4.0", features = ["derive"] }
