@@ -8,8 +8,9 @@ description = "My program! (TODO: Edit this description)"
 
 [dependencies]
 # General
-miette = "5"
+miette = { version = "5", features = ["fancy"]}
 chrono = "0.4.22"
+teloxide = { version = "0.11.2", default-features = false, features = ["macros", "throttle", "rustls", "ctrlc_handler"] }
 
 # Logging
 env_logger = "0.9"
@@ -24,3 +25,6 @@ async-cron-scheduler = "1.0.0"
 
 # Command line arguments
 clap = { version = "4.0", features = ["derive"] }
+
+[features]
+persistent-storage = []
