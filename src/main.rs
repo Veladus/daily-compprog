@@ -1,6 +1,6 @@
-mod daily_messages;
+mod scheduled_service;
 mod options;
-mod telegram_bot;
+mod telegram_bot_service;
 
 use std::sync::Arc;
 use miette::Result;
@@ -19,10 +19,10 @@ async fn main() -> Result<()> {
     // Initialize and run subsystems
     Toplevel::new()
         .start("daily messages", move |subsys| {
-            daily_messages::daily_handler(opts_rc1, subsys)
+            scheduled_service::daily_handler(opts_rc1, subsys)
         })
         .start("telegram bot", move |subsys| {
-            telegram_bot::subsystem_handler(opts_rc2, subsys)
+            telegram_bot_service::subsystem_handler(opts_rc2, subsys)
         })
         .catch_signals()
         .handle_shutdown_requests(Duration::from_millis(3000))

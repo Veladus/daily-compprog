@@ -13,7 +13,7 @@ use crate::options;
 
 #[derive(BotCommands, Clone, Debug)]
 #[command(rename_rule = "lowercase", description = "These commands are supported:", parse_with = "split")]
-enum Command {
+enum ChannelCommand {
     #[command(description = "Send this message.")]
     Help,
     #[command(description = "(Re)starts the bot in this channel.")]
@@ -26,12 +26,12 @@ enum Command {
 }
 
 #[derive(Clone, Debug, Default)]
-struct PersistedState {
+struct ChannelState {
     registered_users: HashMap<String, String>,
 }
 
-type MyStorage = InMemStorage<PersistedState>;
-type MyDialogue = Dialogue<PersistedState, MyStorage>;
+type MyStorage = InMemStorage<ChannelState>;
+type MyDialogue = Dialogue<ChannelState, MyStorage>;
 
 async fn start(bot: Bot, dialogue: MyDialogue, msg: Message) -> Result<()> {
     bot.send_dice(msg.chat.id).await.into_diagnostic()?;
@@ -39,12 +39,12 @@ async fn start(bot: Bot, dialogue: MyDialogue, msg: Message) -> Result<()> {
 }
 
 async fn help(bot: Bot, dialogue: MyDialogue, msg: Message) -> Result<()> {
-    bot.send_message(msg.chat.id, Command::descriptions().to_string()).await.into_diagnostic()?;
+    bot.send_message(msg.chat.id, ChannelCommand::descriptions().to_string()).await.into_diagnostic()?;
     Ok(())
 }
 
-async fn register(bot: Bot, dialogue: MyDialogue, command: Command, msg: Message) -> Result<()> {
-    if let Command::Register { display_name, codeforces_handle } = command {
+async fn register(bot: Bot, dialogue: MyDialogue, command: ChannelCommand, msg: Message) -> Result<()> {
+    if let ChannelCommand::Register { display_name, codeforces_handle } = command {
         let message_str = {
             // get and change storage
             let mut state = dialogue.get_or_default().await.into_diagnostic()?;
@@ -78,14 +78,14 @@ async fn register(bot: Bot, dialogue: MyDialogue, command: Command, msg: Message
 fn schema() -> UpdateHandler<miette::Error> {
     use dptree::case;
 
-    let command_handler = teloxide::filter_command::<Command, _>()
-        .branch(case![Command::Start].endpoint(start))
-        .branch(case![Command::Help].endpoint(help))
-        .branch(case![Command::Register {display_name, codeforces_handle}].endpoint(register));
+    let command_handler = teloxide::filter_command::<ChannelCommand, _>()
+        .branch(case![ChannelCommand::Start].endpoint(start))
+        .branch(case![ChannelCommand::Help].endpoint(help))
+        .branch(case![ChannelCommand::Register {display_name, codeforces_handle}].endpoint(register));
 
     let message_handler = Update::filter_message().branch(command_handler);
 
-    dialogue::enter::<Update, MyStorage, PersistedState, _>().branch(message_handler)
+    dialogue::enter::<Update, MyStorage, ChannelState, _>().branch(message_handler)
 }
 
 pub async fn subsystem_handler(options: Arc<options::Options>, subsys: SubsystemHandle) -> Result<()> {
