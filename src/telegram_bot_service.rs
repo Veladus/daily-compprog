@@ -141,11 +141,20 @@ pub async fn subsystem_handler(
         .dependencies(dptree::deps![MyStorage::new(), sched_send])
         .build();
     let shutdown_token = dispatcher.shutdown_token();
-    tokio::spawn(async move { dispatcher.dispatch().await });
+    let join_handle = tokio::spawn(async move { dispatcher.dispatch().await });
 
     log::info!("Started Telegram Bot");
 
-    subsys.on_shutdown_requested().await;
+    // wait for telegram client to end (by panic), or shutdown request
+    let join_error = tokio::select! {
+        _ = subsys.on_shutdown_requested() => Ok(()),
+        return_value = join_handle => return_value,
+    };
+    if let Err(error) = join_error {
+        log::error!("Telegram bot terminated with error:\n{}", &error);
+        subsys.request_global_shutdown();
+        return Err(error).into_diagnostic();
+    }
 
     log::info!("Shutting down Telegram Bot...");
     shutdown_token.shutdown().into_diagnostic()?.await;

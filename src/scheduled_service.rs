@@ -2,8 +2,8 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use teloxide::prelude::*;
 
-use crate::options;
 use crate::telegram_bot_service::{ChannelState, TelegramControlCommand};
+use crate::{codeforces, options};
 use async_cron_scheduler::{Job, JobId, Scheduler};
 use chrono::Local;
 use miette::{IntoDiagnostic, Result};
@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use tokio_graceful_shutdown::SubsystemHandle;
 
-pub const CRON_SCHEDULE: &str = "* * * * * * *";
+pub const CRON_SCHEDULE: &str = "1 * * * * * *";
 
 use SchedulerControlCommand::*;
 #[derive(Debug, Clone)]
@@ -26,7 +26,15 @@ async fn daily_message(
     chat_id: ChatId,
     telegram_send: Arc<mpsc::UnboundedSender<TelegramControlCommand>>,
 ) -> Result<()> {
-    log::info!("Daily message to {chat_id:?}");
+    log::info!("Starting to prepare daily message for {chat_id:?}");
+    let client = codeforces::Client::new();
+    let problems = client
+        .get_problems_by_tag(["implementation"].iter().map(|r| &**r))
+        .await?;
+    log::info!(
+        "Daily message to {chat_id:?} with {} problems",
+        problems.len()
+    );
     Ok(())
 }
 
@@ -36,13 +44,14 @@ async fn start_daily_schedule(
     scheduler_rw: Arc<RwLock<MyScheduler>>,
     telegram_send: Arc<mpsc::UnboundedSender<TelegramControlCommand>>,
 ) -> Result<()> {
-    log::info!("starting stuff for {chat_id}");
+    log::info!("Registered daily messages for {chat_id}");
     let mut scheduler = scheduler_rw.as_ref().write().await;
 
     let job_id = {
         let job = Job::cron(CRON_SCHEDULE).into_diagnostic()?;
         scheduler.insert(job, move |_id| {
-            tokio::spawn(daily_message(chat_id, telegram_send.clone()));
+            let telegram_send_clone = telegram_send.clone();
+            tokio::spawn(async move { daily_message(chat_id, telegram_send_clone).await.unwrap() });
         })
     };
 

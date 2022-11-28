@@ -1,3 +1,4 @@
+mod codeforces;
 mod options;
 mod scheduled_service;
 mod telegram_bot_service;
