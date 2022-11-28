@@ -13,6 +13,7 @@ chrono = "0.4.22"
 teloxide = { version = "0.11.2", default-features = false, features = ["macros", "throttle", "rustls", "ctrlc_handler"] }
 reqwest = { version = "0.11.13", default-features = false, features = ["rustls-tls", "gzip", "brotli", "json"] }
 serde = { version = "1", features = ["derive"] }
+xorshift = "0.1.3"
 
 # Logging
 env_logger = "0.9"

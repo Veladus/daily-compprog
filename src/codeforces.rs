@@ -1,61 +1,105 @@
-use miette::{IntoDiagnostic, Result};
+use miette::{miette, IntoDiagnostic, Result};
 use serde::de::DeserializeOwned;
 use serde::*;
 
-pub const BASE_URL: &str = "https://codeforces.com/api/";
+pub const BASE: &str = "https://codeforces.com";
+pub const API_BASE: &str = "https://codeforces.com/api";
+pub const TAGS: &[&str] = &[
+    "2-sat",
+    "binary search",
+    "bitmasks",
+    "brute force",
+    "chinese remainder theorem",
+    "combinatorics",
+    "constructive algorithms",
+    "data structures",
+    "dfs and similar",
+    "divide and conquer",
+    "dp",
+    "dsu",
+    "expression parsing",
+    "fft",
+    "flows",
+    "games",
+    "geometry",
+    "graph matchings",
+    "graphs",
+    "greedy",
+    "hashing",
+    "implementation",
+    "math",
+    "matrices",
+    "meet-in-the-middle",
+    "number theory",
+    "probabilities",
+    "schedules",
+    "shortest paths",
+    "sortings",
+    "string suffix structures",
+    "strings",
+    "ternary search",
+    "trees",
+    "two pointers",
+];
 
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
 pub struct Problem {
-    index: String,
-    name: String,
-    tags: Vec<String>,
-    rating: Option<u64>,
+    pub index: String,
+    pub name: String,
+    pub tags: Vec<String>,
+    pub rating: Option<u64>,
     #[serde(rename = "contestId")]
-    contest_id: Option<u64>,
+    pub contest_id: Option<u64>,
     #[serde(rename = "problemsetName")]
-    problemset_name: Option<String>,
+    pub problemset_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
 pub struct User {
-    handle: String,
-    rating: u64,
+    pub handle: String,
+    pub rating: u64,
     #[serde(rename = "maxRating")]
-    max_rating: u64,
+    pub max_rating: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
 pub struct Member {
-    handle: String,
-    name: Option<String>,
+    pub handle: String,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
 pub struct Party {
     #[serde(rename = "contestId")]
-    contest_id: Option<String>,
-    members: Vec<Member>,
+    pub contest_id: Option<String>,
+    pub members: Vec<Member>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
 pub struct Submission {
-    id: u64,
+    pub id: u64,
     #[serde(rename = "contestId")]
-    contest_id: u64,
-    problem: Problem,
-    author: Party,
-    verdict: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
-struct ListResponse<T> {
-    status: String,
-    results: Vec<T>,
+    pub contest_id: u64,
+    pub problem: Problem,
+    pub author: Party,
+    pub verdict: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Client {
     reqwest_client: reqwest::Client,
+}
+
+impl Problem {
+    pub fn url(&self) -> Result<String> {
+        Ok(format!(
+            "{BASE}/contest/{}/problem/{}",
+            self.contest_id.ok_or_else(|| miette!(
+                "Don't know how to synthesize URL of problem without contest_id"
+            ))?,
+            self.index
+        ))
+    }
 }
 
 impl Client {
@@ -94,7 +138,7 @@ impl Client {
     }
 
     pub async fn get_user_submissions(&self, handle: &str) -> Result<Vec<Submission>> {
-        let url = format!("{BASE_URL}user.status");
+        let url = format!("{API_BASE}/user.status");
         self.call(&url, &[("handle", handle)]).await
     }
 
@@ -102,7 +146,7 @@ impl Client {
         &self,
         tags: impl Iterator<Item = &str>,
     ) -> Result<Vec<Problem>> {
-        let url = format!("{BASE_URL}problemset.problems");
+        let url = format!("{API_BASE}/problemset.problems");
         let tags_string: String = tags.collect::<Vec<_>>().join(";");
 
         #[derive(Debug, Clone, Deserialize, Serialize)]

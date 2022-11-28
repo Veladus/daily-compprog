@@ -9,8 +9,11 @@ use teloxide::{prelude::*, utils::command::BotCommands};
 use tokio::sync::mpsc;
 use tokio_graceful_shutdown::SubsystemHandle;
 
+use TelegramControlCommand::*;
 #[derive(Debug, Clone)]
-pub enum TelegramControlCommand {}
+pub enum TelegramControlCommand {
+    SendMessage { chat_id: ChatId, message: String },
+}
 
 #[derive(BotCommands, Clone, Debug)]
 #[command(
@@ -39,7 +42,7 @@ type MyStorage = InMemStorage<ChannelState>;
 type MyDialogue = Dialogue<ChannelState, MyStorage>;
 
 async fn start(
-    bot: Bot,
+    bot: Arc<Bot>,
     sched_send: mpsc::UnboundedSender<SchedulerControlCommand>,
     msg: Message,
 ) -> Result<()> {
@@ -48,11 +51,13 @@ async fn start(
             chat_id: msg.chat.id,
         })
         .into_diagnostic()?;
-    bot.send_dice(msg.chat.id).await.into_diagnostic()?;
+    bot.send_message(msg.chat.id, "A daily problem will be prepared for you🍴")
+        .await
+        .into_diagnostic()?;
     Ok(())
 }
 
-async fn help(bot: Bot, msg: Message) -> Result<()> {
+async fn help(bot: Arc<Bot>, msg: Message) -> Result<()> {
     bot.send_message(msg.chat.id, ChannelCommand::descriptions().to_string())
         .await
         .into_diagnostic()?;
@@ -60,7 +65,7 @@ async fn help(bot: Bot, msg: Message) -> Result<()> {
 }
 
 async fn register(
-    bot: Bot,
+    bot: Arc<Bot>,
     dialogue: MyDialogue,
     command: ChannelCommand,
     msg: Message,
@@ -127,28 +132,48 @@ fn schema() -> UpdateHandler<miette::Error> {
     dialogue::enter::<Update, MyStorage, ChannelState, _>().branch(message_handler)
 }
 
+async fn handle_control_command(command: TelegramControlCommand, bot: Arc<Bot>) -> Result<()> {
+    match command {
+        SendMessage { chat_id, message } => {
+            bot.send_message(chat_id, message).await.into_diagnostic()?;
+            Ok(())
+        }
+    }
+}
+
 pub async fn subsystem_handler(
-    options: Arc<options::Options>,
-    telegram_recv: mpsc::UnboundedReceiver<TelegramControlCommand>,
+    _options: Arc<options::Options>,
+    mut telegram_recv: mpsc::UnboundedReceiver<TelegramControlCommand>,
     sched_send: mpsc::UnboundedSender<SchedulerControlCommand>,
     subsys: SubsystemHandle,
 ) -> Result<()> {
     log::info!("Starting Telegram Bot...");
 
     // setup bot
-    let bot = Bot::from_env();
-    let mut dispatcher = Dispatcher::builder(bot, schema())
+    let bot = Arc::new(Bot::from_env());
+    let mut dispatcher = Dispatcher::builder(bot.clone(), schema())
         .dependencies(dptree::deps![MyStorage::new(), sched_send])
         .build();
     let shutdown_token = dispatcher.shutdown_token();
-    let join_handle = tokio::spawn(async move { dispatcher.dispatch().await });
+    let mut join_handle = tokio::spawn(async move { dispatcher.dispatch().await });
 
     log::info!("Started Telegram Bot");
 
+    let mut open_tasks = Vec::new();
+    let spawn_task = |command| {
+        let bot_clone = bot.clone();
+        tokio::spawn(async move { handle_control_command(command, bot_clone).await.unwrap() })
+    };
     // wait for telegram client to end (by panic), or shutdown request
-    let join_error = tokio::select! {
-        _ = subsys.on_shutdown_requested() => Ok(()),
-        return_value = join_handle => return_value,
+    let join_error = loop {
+        tokio::select! {
+            _ = subsys.on_shutdown_requested() => break Ok(()),
+            return_value = &mut join_handle => break return_value,
+            command_opt = telegram_recv.recv() => match command_opt {
+                Some(command) => open_tasks.push(spawn_task(command)),
+                None => break Ok(()),
+            },
+        };
     };
     if let Err(error) = join_error {
         log::error!("Telegram bot terminated with error:\n{}", &error);
@@ -157,7 +182,20 @@ pub async fn subsystem_handler(
     }
 
     log::info!("Shutting down Telegram Bot...");
-    shutdown_token.shutdown().into_diagnostic()?.await;
+    let shutdown_result = shutdown_token.shutdown().into_diagnostic();
+
+    // process pending control statements
+    telegram_recv.close();
+    while let Some(command) = telegram_recv.recv().await {
+        open_tasks.push(spawn_task(command));
+    }
+    log::debug!("{} open task(s) in scheduler service", open_tasks.len());
+    for handle in open_tasks {
+        handle.await.into_diagnostic()?;
+    }
+
+    // wait for telegram dispatcher to terminate
+    shutdown_result?.await;
     log::info!("Shut down Telegram Bot");
     Ok(())
 }
