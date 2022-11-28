@@ -1,9 +1,10 @@
-mod scheduled_service;
 mod options;
+mod scheduled_service;
 mod telegram_bot_service;
 
-use std::sync::Arc;
 use miette::Result;
+use std::sync::Arc;
+use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_graceful_shutdown::Toplevel;
 
@@ -16,13 +17,16 @@ async fn main() -> Result<()> {
     let opts_rc1 = opts_rc.clone();
     let opts_rc2 = opts_rc;
 
+    let (sched_send, sched_recv) = mpsc::unbounded_channel();
+    let (telegram_send, telegram_recv) = mpsc::unbounded_channel();
+
     // Initialize and run subsystems
     Toplevel::new()
-        .start("daily messages", move |subsys| {
-            scheduled_service::daily_handler(opts_rc1, subsys)
+        .start("scheduler", move |subsys| {
+            scheduled_service::subsystem_handler(opts_rc1, sched_recv, telegram_send, subsys)
         })
         .start("telegram bot", move |subsys| {
-            telegram_bot_service::subsystem_handler(opts_rc2, subsys)
+            telegram_bot_service::subsystem_handler(opts_rc2, telegram_recv, sched_send, subsys)
         })
         .catch_signals()
         .handle_shutdown_requests(Duration::from_millis(3000))
