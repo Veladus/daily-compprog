@@ -41,7 +41,6 @@ type MyDialogue = Dialogue<ChannelState, MyStorage>;
 async fn start(
     bot: Bot,
     sched_send: mpsc::UnboundedSender<SchedulerControlCommand>,
-    dialogue: MyDialogue,
     msg: Message,
 ) -> Result<()> {
     sched_send
@@ -53,7 +52,7 @@ async fn start(
     Ok(())
 }
 
-async fn help(bot: Bot, dialogue: MyDialogue, msg: Message) -> Result<()> {
+async fn help(bot: Bot, msg: Message) -> Result<()> {
     bot.send_message(msg.chat.id, ChannelCommand::descriptions().to_string())
         .await
         .into_diagnostic()?;

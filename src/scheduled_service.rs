@@ -13,11 +13,11 @@ use tokio_graceful_shutdown::SubsystemHandle;
 
 pub const CRON_SCHEDULE: &str = "* * * * * * *";
 
+use SchedulerControlCommand::*;
 #[derive(Debug, Clone)]
 pub enum SchedulerControlCommand {
     StartDailyMessages { chat_id: ChatId },
 }
-use SchedulerControlCommand::*;
 
 type SchedulerStorage = HashMap<ChatId, JobId>;
 type MyScheduler = Scheduler<Local>;
@@ -40,7 +40,6 @@ async fn start_daily_schedule(
     let mut scheduler = scheduler_rw.as_ref().write().await;
 
     let job_id = {
-        let sched_storage_rw_clone = sched_storage_rw.clone();
         let job = Job::cron(CRON_SCHEDULE).into_diagnostic()?;
         scheduler.insert(job, move |_id| {
             tokio::spawn(daily_message(chat_id, telegram_send.clone()));
@@ -83,12 +82,12 @@ pub async fn subsystem_handler(
     // setup schedule
     let (scheduler, sched_service) = MyScheduler::launch(tokio::time::sleep);
     let scheduler_arc = Arc::new(RwLock::new(scheduler));
+    tokio::spawn(sched_service);
 
+    // make data sharable
     let telegram_send_arc = Arc::new(telegram_send);
-
     let storage_arc = Arc::new(RwLock::new(SchedulerStorage::new()));
 
-    tokio::spawn(sched_service);
     log::info!("Set up scheduler service");
 
     let mut open_tasks = Vec::new();
@@ -100,17 +99,14 @@ pub async fn subsystem_handler(
             telegram_send_arc.clone(),
         ))
     };
+    // main control loop
     loop {
         tokio::select! {
             _ = subsys.on_shutdown_requested() => break,
             command_opt = sched_recv.recv() => match command_opt {
-                Some(command) => {
-                    open_tasks
-                        .push(spawn_task(command)
-                        )
-                }
+                Some(command) => open_tasks.push(spawn_task(command)),
                 None => subsys.on_shutdown_requested().await,
-            }
+            },
         }
 
         // clean open_tasks to prevent memory leakage
@@ -124,7 +120,7 @@ pub async fn subsystem_handler(
         open_tasks.push(spawn_task(command));
     }
 
-    log::debug!("{} open tasks in scheduler service", open_tasks.len());
+    log::debug!("{} open task(s) in scheduler service", open_tasks.len());
     for handle in open_tasks {
         handle.await.into_diagnostic()??;
     }
