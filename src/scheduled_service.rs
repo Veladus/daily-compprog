@@ -1,4 +1,6 @@
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use teloxide::prelude::*;
 
 use crate::telegram_bot_service::TelegramControlCommand;
@@ -12,7 +14,7 @@ use tokio::sync::{mpsc, RwLock};
 use tokio_graceful_shutdown::SubsystemHandle;
 use xorshift::{Rng, SeedableRng, Xorshift128};
 
-pub const CRON_SCHEDULE: &str = "0 30 7 * * * *";
+pub const CRON_SCHEDULE: &str = "0 * * * * * *";
 
 use SchedulerControlCommand::*;
 #[derive(Debug, Clone)]
@@ -31,7 +33,12 @@ async fn daily_message(
         .duration_since(UNIX_EPOCH)
         .into_diagnostic()?
         .as_secs();
-    let states = [unix_time_s, unix_time_s];
+    let chat_hash = {
+        let mut hasher = DefaultHasher::new();
+        chat_id.hash(&mut hasher);
+        hasher.finish()
+    };
+    let states = [unix_time_s, chat_hash];
     let mut rng: Xorshift128 = SeedableRng::from_seed(&states[..]);
 
     log::info!("Starting to prepare daily message for {chat_id:?}");
@@ -51,7 +58,11 @@ async fn daily_message(
                 }
             })
             .collect();
-        log::debug!("For tag {} there are {} admissible problems", codeforces::TAGS[tag_index], problems.len());
+        log::debug!(
+            "For tag {} there are {} admissible problems",
+            codeforces::TAGS[tag_index],
+            problems.len()
+        );
 
         if !problems.is_empty() {
             break problems.swap_remove((rng.next_u64() as usize) % problems.len());
