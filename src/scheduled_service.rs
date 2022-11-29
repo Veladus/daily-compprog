@@ -14,7 +14,7 @@ use tokio::sync::{mpsc, RwLock};
 use tokio_graceful_shutdown::SubsystemHandle;
 use xorshift::{Rng, SeedableRng, Xorshift128};
 
-pub const CRON_SCHEDULE: &str = "0 * * * * * *";
+pub const CRON_SCHEDULE: &str = "0 30 7 * * * *";
 
 use SchedulerControlCommand::*;
 #[derive(Debug, Clone)]
