@@ -1,7 +1,7 @@
 mod codeforces;
 mod options;
-mod scheduled_service;
-mod telegram_bot_service;
+mod scheduler;
+mod telegram_bot;
 
 use miette::Result;
 use std::sync::Arc;
@@ -24,10 +24,10 @@ async fn main() -> Result<()> {
     // Initialize and run subsystems
     Toplevel::new()
         .start("scheduler", move |subsys| {
-            scheduled_service::subsystem_handler(opts_rc1, sched_recv, telegram_send, subsys)
+            scheduler::subsystem_handler(opts_rc1, sched_recv, telegram_send, subsys)
         })
         .start("telegram bot", move |subsys| {
-            telegram_bot_service::subsystem_handler(opts_rc2, telegram_recv, sched_send, subsys)
+            telegram_bot::subsystem_handler(opts_rc2, telegram_recv, sched_send, subsys)
         })
         .catch_signals()
         .handle_shutdown_requests(Duration::from_millis(3000))
