@@ -131,8 +131,8 @@ async fn set_rating_range(
         } else {
             bot.send_message(msg.chat.id, "Lower bound should not exceed upper bound")
                 .await
-                .into_diagnostic()?;
-            Err(miette!("set-rating: lower bound exceeds upper bound"))
+                .into_diagnostic()
+                .map(|_| ())
         }
     } else {
         Err(miette!(
