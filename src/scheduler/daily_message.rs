@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use teloxide::prelude::*;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, oneshot, RwLock};
 use xorshift::{Rng, SeedableRng, Xorshift128};
 
 pub const CRON_SCHEDULE: &str = "0 30 7 * * * *";
@@ -17,17 +17,30 @@ async fn daily_message(
     chat_id: ChatId,
     telegram_send: Arc<mpsc::UnboundedSender<TelegramControlCommand>>,
 ) -> Result<()> {
-    let unix_time_s = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .into_diagnostic()?
-        .as_secs();
-    let chat_hash = {
-        let mut hasher = DefaultHasher::new();
-        chat_id.hash(&mut hasher);
-        hasher.finish()
+    let channel_state = {
+        let (send, recv) = oneshot::channel();
+        telegram_send
+            .send(TelegramControlCommand::GetChannelState {
+                chat_id,
+                return_send: send,
+            })
+            .map_err(|_| miette!("Could not request channel state for {:?}", chat_id))?;
+        recv.await.into_diagnostic()?
     };
-    let states = [unix_time_s, chat_hash];
-    let mut rng: Xorshift128 = SeedableRng::from_seed(&states[..]);
+
+    let mut rng: Xorshift128 = {
+        let unix_time_s = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .into_diagnostic()?
+            .as_secs();
+        let chat_hash = {
+            let mut hasher = DefaultHasher::new();
+            chat_id.hash(&mut hasher);
+            hasher.finish()
+        };
+        let states = [unix_time_s, chat_hash];
+        SeedableRng::from_seed(&states[..])
+    };
 
     log::info!("Starting to prepare daily message for {chat_id:?}");
     let client = codeforces::Client::new();
@@ -39,23 +52,26 @@ async fn daily_message(
         let mut problems: Vec<_> = problems
             .into_iter()
             .filter(|problem| {
-                if let Some(rating) = problem.rating {
-                    (2000..=2400).contains(&rating)
-                } else {
-                    false
-                }
+                problem.rating.map_or(false, |rating| {
+                    channel_state.rating_range().contains(&rating)
+                })
             })
             .collect();
         log::debug!(
-            "For tag {} there are {} admissible problems",
+            "For tag {} in chat {:?} there are {} admissible problems",
             codeforces::TAGS[tag_index],
+            chat_id,
             problems.len()
         );
 
         if !problems.is_empty() {
             break problems.swap_remove((rng.next_u64() as usize) % problems.len());
         }
-        log::warn!("Tag {} has no viable problems", codeforces::TAGS[tag_index]);
+        log::warn!(
+            "Tag {} has no viable problems in chat {:?}",
+            codeforces::TAGS[tag_index],
+            chat_id
+        );
     };
 
     log::info!("Sending daily message to {:?}", chat_id);

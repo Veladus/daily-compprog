@@ -5,12 +5,14 @@ use teloxide::Bot;
 use tokio::sync::mpsc;
 use tokio_graceful_shutdown::SubsystemHandle;
 
+mod channel_state;
 mod controller;
 mod dispatcher;
 
 use crate::scheduler::SchedulerControlCommand;
+use crate::telegram_bot::dispatcher::MyStorage;
+pub use channel_state::ChannelState;
 pub use controller::TelegramControlCommand;
-pub use dispatcher::ChannelState;
 
 pub async fn subsystem_handler(
     _options: Arc<options::Options>,
@@ -22,14 +24,21 @@ pub async fn subsystem_handler(
 
     // setup bot
     let bot = Arc::new(Bot::from_env());
-    let (shutdown_token, mut join_handle) = dispatcher::setup(bot.clone(), sched_send).await;
+    let storage = MyStorage::new();
+    let (shutdown_token, mut join_handle) =
+        dispatcher::setup(bot.clone(), sched_send, storage.clone()).await;
 
     log::info!("Started Telegram Bot");
 
     let mut open_tasks = Vec::new();
     let spawn_task = |command| {
         let bot_clone = bot.clone();
-        tokio::spawn(async move { controller::handle(command, bot_clone).await.unwrap() })
+        let storage_clone = storage.clone();
+        tokio::spawn(async move {
+            controller::handle(command, bot_clone, storage_clone)
+                .await
+                .unwrap()
+        })
     };
     // wait for telegram client to end (by panic), or shutdown request
     let join_error = loop {

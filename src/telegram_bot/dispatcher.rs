@@ -1,6 +1,6 @@
 use crate::scheduler::SchedulerControlCommand;
+use crate::telegram_bot::channel_state::ChannelState;
 use miette::{miette, IntoDiagnostic, Result};
-use std::collections::HashMap;
 use std::sync::Arc;
 use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::dispatching::{dialogue, ShutdownToken, UpdateHandler};
@@ -9,11 +9,6 @@ use teloxide::utils::command::BotCommands;
 use teloxide::{dptree, Bot};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-
-#[derive(Clone, Debug, Default)]
-pub struct ChannelState {
-    registered_users: HashMap<String, String>,
-}
 
 #[derive(BotCommands, Clone, Debug)]
 #[command(
@@ -26,15 +21,20 @@ enum ChannelCommand {
     Help,
     #[command(description = "(Re)starts the bot in this channel.")]
     Start,
-    #[command(description = "Register a user.\n\tUsage: /register <display_name> <cf-handle>")]
+    #[command(description = "Register a user.\n\tUsage: /register <display-name> <cf-handle>")]
     Register {
         display_name: String,
         codeforces_handle: String,
     },
+    #[command(
+        rename = "setrange",
+        description = "Set the considered rating range.\n\tUsage: /setrange <lower-bound> <upper-bound>"
+    )]
+    SetRatingRange { lower_bound: u64, upper_bound: u64 },
 }
 
-type MyStorage = InMemStorage<ChannelState>;
-type MyDialogue = Dialogue<ChannelState, MyStorage>;
+pub type MyStorage = InMemStorage<ChannelState>;
+pub type MyDialogue = Dialogue<ChannelState, MyStorage>;
 
 async fn start(
     bot: Arc<Bot>,
@@ -108,12 +108,52 @@ async fn register(
     }
 }
 
+async fn set_rating_range(
+    bot: Arc<Bot>,
+    dialogue: MyDialogue,
+    command: ChannelCommand,
+    msg: Message,
+) -> Result<()> {
+    if let ChannelCommand::SetRatingRange {
+        lower_bound,
+        upper_bound,
+    } = command
+    {
+        if lower_bound <= upper_bound {
+            let mut state = dialogue.get_or_default().await.into_diagnostic()?;
+            state.rating_range = Some(lower_bound..=upper_bound);
+            dialogue.update(state).await.into_diagnostic()?;
+
+            bot.send_message(msg.chat.id, "Updated rating range")
+                .await
+                .into_diagnostic()
+                .map(|_| ())
+        } else {
+            bot.send_message(msg.chat.id, "Lower bound should not exceed upper bound")
+                .await
+                .into_diagnostic()?;
+            Err(miette!("set-rating: lower bound exceeds upper bound"))
+        }
+    } else {
+        Err(miette!(
+            "Handler for set-rating command did not receive correct data"
+        ))
+    }
+}
+
 fn schema() -> UpdateHandler<miette::Error> {
     use dptree::case;
 
     let command_handler = teloxide::filter_command::<ChannelCommand, _>()
         .branch(case![ChannelCommand::Start].endpoint(start))
         .branch(case![ChannelCommand::Help].endpoint(help))
+        .branch(
+            case![ChannelCommand::SetRatingRange {
+                lower_bound,
+                upper_bound
+            }]
+            .endpoint(set_rating_range),
+        )
         .branch(
             case![ChannelCommand::Register {
                 display_name,
@@ -130,10 +170,13 @@ fn schema() -> UpdateHandler<miette::Error> {
 pub async fn setup(
     bot: Arc<Bot>,
     sched_send: mpsc::UnboundedSender<SchedulerControlCommand>,
+    storage: Arc<MyStorage>,
 ) -> (ShutdownToken, JoinHandle<()>) {
-    let mut dispatcher = Dispatcher::builder(bot.clone(), schema())
-        .dependencies(dptree::deps![MyStorage::new(), sched_send])
+    let mut dispatcher = Dispatcher::builder(bot, schema())
+        // storage is an Arc<_>, so cloning it keeps the connection
+        .dependencies(dptree::deps![storage, sched_send])
         .build();
+
     let shutdown_token = dispatcher.shutdown_token();
     let join_handle = tokio::spawn(async move { dispatcher.dispatch().await });
     (shutdown_token, join_handle)
