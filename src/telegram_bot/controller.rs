@@ -34,7 +34,7 @@ pub async fn handle(
             chat_id,
             return_send,
         } => {
-            let state = storage
+            let state: ChannelState = storage
                 .clone()
                 .get_dialogue(chat_id)
                 .await

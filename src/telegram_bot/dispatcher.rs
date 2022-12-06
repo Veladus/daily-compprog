@@ -1,8 +1,8 @@
+use crate::options::Options;
 use crate::scheduler::SchedulerControlCommand;
 use crate::telegram_bot::channel_state::ChannelState;
 use miette::{miette, IntoDiagnostic, Result};
 use std::sync::Arc;
-use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::dispatching::{dialogue, ShutdownToken, UpdateHandler};
 use teloxide::prelude::*;
 use teloxide::utils::command::BotCommands;
@@ -33,7 +33,13 @@ enum ChannelCommand {
     SetRatingRange { lower_bound: u64, upper_bound: u64 },
 }
 
-pub type MyStorage = InMemStorage<ChannelState>;
+#[cfg(not(feature = "persistent"))]
+pub type MyStorage = teloxide::dispatching::dialogue::InMemStorage<ChannelState>;
+#[cfg(feature = "persistent")]
+pub type MyStorage = teloxide::dispatching::dialogue::RedisStorage<
+    teloxide::dispatching::dialogue::serializer::Bincode,
+>;
+
 pub type MyDialogue = Dialogue<ChannelState, MyStorage>;
 
 async fn start(
@@ -80,11 +86,11 @@ async fn register(
                 .or_insert(codeforces_handle);
 
             // use storage to create answer
-            let mut result = String::new();
+            let mut result = String::from("Current Registrations:\n");
             for (display_name, codeforces_handle) in &state.registered_users {
                 result.push_str("Name: ");
                 result.push_str(display_name);
-                result.push('\n');
+                result.push('\t');
                 result.push_str("Handle: ");
                 result.push_str(codeforces_handle);
                 result.push('\n');
@@ -180,4 +186,18 @@ pub async fn setup(
     let shutdown_token = dispatcher.shutdown_token();
     let join_handle = tokio::spawn(async move { dispatcher.dispatch().await });
     (shutdown_token, join_handle)
+}
+
+#[cfg(not(feature = "persistent"))]
+pub async fn create_storage(_options: &Options) -> Result<Arc<MyStorage>> {
+    Ok(MyStorage::new())
+}
+#[cfg(feature = "persistent")]
+pub async fn create_storage(options: &Options) -> Result<Arc<MyStorage>> {
+    MyStorage::open(
+        options.redis_host.as_ref(),
+        teloxide::dispatching::dialogue::serializer::Bincode,
+    )
+    .await
+    .into_diagnostic()
 }

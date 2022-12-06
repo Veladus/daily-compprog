@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
+use serde::{Deserialize, Serialize};
 
 const DEFAULT_RATING_RANGE: RangeInclusive<u64> = 2000..=2400;
 
 #[derive(Clone, Debug, Default)]
+#[derive(Serialize, Deserialize)]
 pub struct ChannelState {
     pub(super) registered_users: HashMap<String, String>,
     pub(super) rating_range: Option<RangeInclusive<u64>>,

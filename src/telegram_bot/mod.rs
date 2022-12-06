@@ -10,12 +10,11 @@ mod controller;
 mod dispatcher;
 
 use crate::scheduler::SchedulerControlCommand;
-use crate::telegram_bot::dispatcher::MyStorage;
 pub use channel_state::ChannelState;
 pub use controller::TelegramControlCommand;
 
 pub async fn subsystem_handler(
-    _options: Arc<options::Options>,
+    options: Arc<options::Options>,
     mut telegram_recv: mpsc::UnboundedReceiver<TelegramControlCommand>,
     sched_send: mpsc::UnboundedSender<SchedulerControlCommand>,
     subsys: SubsystemHandle,
@@ -24,7 +23,7 @@ pub async fn subsystem_handler(
 
     // setup bot
     let bot = Arc::new(Bot::from_env());
-    let storage = MyStorage::new();
+    let storage = dispatcher::create_storage(options.as_ref()).await?;
     let (shutdown_token, mut join_handle) =
         dispatcher::setup(bot.clone(), sched_send, storage.clone()).await;
 

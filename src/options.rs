@@ -9,8 +9,13 @@ pub struct Options {
     pub verbose: u8,
 
     /// Cron options for message schedule
-    #[arg(long, default_value_t = String::from("0 8 * * * *"))]
+    #[arg(long, default_value_t = String::from("30 7 * * * *"))]
     pub messages_cron: String,
+
+    /// Address of Redis instance
+    #[cfg(feature = "persistent")]
+    #[arg(long, default_value_t = String::from("redis://localhost:6379"))]
+    pub redis_host: String,
 }
 
 pub fn parse() -> Options {
