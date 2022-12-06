@@ -1,7 +1,7 @@
 use miette::{miette, IntoDiagnostic, Result};
 use serde::de::DeserializeOwned;
 use serde::*;
-use std::fmt::format;
+
 
 pub const BASE: &str = "https://codeforces.com";
 pub const API_BASE: &str = "https://codeforces.com/api";
