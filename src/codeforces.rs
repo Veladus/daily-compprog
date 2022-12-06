@@ -1,6 +1,7 @@
 use miette::{miette, IntoDiagnostic, Result};
 use serde::de::DeserializeOwned;
 use serde::*;
+use std::fmt::format;
 
 pub const BASE: &str = "https://codeforces.com";
 pub const API_BASE: &str = "https://codeforces.com/api";
@@ -42,6 +43,10 @@ pub const TAGS: &[&str] = &[
     "two pointers",
 ];
 
+#[derive(Debug, Clone, Deserialize, Serialize, Hash, Ord, PartialOrd, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct Handle(String);
+
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
 pub struct Problem {
     pub index: String,
@@ -56,15 +61,15 @@ pub struct Problem {
 
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
 pub struct User {
-    pub handle: String,
+    pub handle: Handle,
     pub rating: u64,
     #[serde(rename = "maxRating")]
     pub max_rating: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
-pub struct Member {
-    pub handle: String,
+pub struct PartyMember {
+    pub handle: Handle,
     pub name: Option<String>,
 }
 
@@ -72,7 +77,7 @@ pub struct Member {
 pub struct Party {
     #[serde(rename = "contestId")]
     pub contest_id: Option<String>,
-    pub members: Vec<Member>,
+    pub members: Vec<PartyMember>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
@@ -88,6 +93,27 @@ pub struct Submission {
 #[derive(Debug, Clone)]
 pub struct Client {
     reqwest_client: reqwest::Client,
+}
+
+impl From<String> for Handle {
+    fn from(str: String) -> Self {
+        Self(str)
+    }
+}
+impl Handle {
+    pub async fn from_checked(str: String, client: &Client) -> Option<Self> {
+        let url = format!("{API_BASE}/user.info/");
+        // check that requesting data about this handle gives an ok result
+        client
+            .call::<Vec<User>>(&url, &[("handles", &str)])
+            .await
+            .ok()
+            .map(|_| Handle(str))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 impl Problem {
@@ -116,7 +142,8 @@ impl Client {
         #[derive(Debug, Clone, Deserialize, Serialize)]
         struct CallResponse<U> {
             status: String,
-            result: U,
+            comment: Option<String>,
+            result: Option<U>,
         }
 
         let response = self
@@ -132,9 +159,12 @@ impl Client {
 
         miette::ensure!(
             response.status == "OK",
-            "Codeforces did not complete the request"
+            "Codeforces did not complete the request. Comment: {:?}",
+            response.comment,
         );
-        Ok(response.result)
+        response
+            .result
+            .ok_or_else(|| miette!("Codeforces did not provide a result"))
     }
 
     pub async fn get_user_submissions(&self, handle: &str) -> Result<Vec<Submission>> {

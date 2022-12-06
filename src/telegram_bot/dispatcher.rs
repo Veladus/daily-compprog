@@ -1,3 +1,4 @@
+use crate::codeforces;
 use crate::options::Options;
 use crate::scheduler::SchedulerControlCommand;
 use crate::telegram_bot::channel_state::ChannelState;
@@ -76,37 +77,50 @@ async fn register(
         codeforces_handle,
     } = command
     {
-        let message_str = {
-            // get and change storage
-            let mut state = dialogue.get_or_default().await.into_diagnostic()?;
-            state
-                .registered_users
-                .entry(display_name.clone())
-                .and_modify(|old| *old = codeforces_handle.clone())
-                .or_insert(codeforces_handle);
+        if let Some(handle) =
+            codeforces::Handle::from_checked(codeforces_handle.clone(), &codeforces::Client::new())
+                .await
+        {
+            let message_str = {
+                // get and change storage
+                let mut state = dialogue.get_or_default().await.into_diagnostic()?;
+                state
+                    .registered_users
+                    .entry(display_name.clone())
+                    .and_modify(|old| *old = handle.clone())
+                    .or_insert(handle);
 
-            // use storage to create answer
-            let mut result = String::from("Current Registrations:\n");
-            for (display_name, codeforces_handle) in &state.registered_users {
-                result.push_str("Name: ");
-                result.push_str(display_name);
-                result.push('\t');
-                result.push_str("Handle: ");
-                result.push_str(codeforces_handle);
-                result.push('\n');
-            }
+                // use storage to create answer
+                let mut result = String::from("Current Registrations:\n");
+                for (display_name, codeforces_handle) in &state.registered_users {
+                    result.push_str("Name: ");
+                    result.push_str(display_name);
+                    result.push('\t');
+                    result.push_str("Handle: ");
+                    result.push_str(codeforces_handle.as_str());
+                    result.push('\n');
+                }
 
-            // save storage
-            dialogue.update(state).await.into_diagnostic()?;
+                // save storage
+                dialogue.update(state).await.into_diagnostic()?;
 
-            result
-        };
+                result
+            };
 
-        bot.send_message(msg.chat.id, message_str)
+            bot.send_message(msg.chat.id, message_str)
+                .await
+                .into_diagnostic()?;
+
+            Ok(())
+        } else {
+            bot.send_message(
+                msg.chat.id,
+                format!("{} is no valid Codeforces Handle", codeforces_handle),
+            )
             .await
             .into_diagnostic()?;
-
-        Ok(())
+            Ok(())
+        }
     } else {
         Err(miette!(
             "Handler for register command did not receive correct data"
