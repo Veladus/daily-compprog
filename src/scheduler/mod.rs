@@ -11,10 +11,16 @@ use tokio_graceful_shutdown::SubsystemHandle;
 
 mod controller;
 mod daily_message;
+mod updater;
+mod util;
 
 pub use controller::SchedulerControlCommand;
 
-type SchedulerStorage = HashMap<ChatId, JobId>;
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+pub(self) struct SchedulerStorage {
+    daily_message_job_ids: HashMap<ChatId, JobId>,
+    update_message_job_ids: HashMap<ChatId, JobId>,
+}
 type MyScheduler = Scheduler<Local>;
 
 pub async fn subsystem_handler(
@@ -32,7 +38,7 @@ pub async fn subsystem_handler(
 
     // make data sharable
     let telegram_send_arc = Arc::new(telegram_send);
-    let storage_arc = Arc::new(RwLock::new(SchedulerStorage::new()));
+    let storage_arc = Arc::new(RwLock::new(SchedulerStorage::default()));
 
     log::info!("Set up scheduler service");
 

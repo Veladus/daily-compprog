@@ -38,7 +38,7 @@ enum ChannelCommand {
 pub type MyStorage = teloxide::dispatching::dialogue::InMemStorage<ChannelState>;
 #[cfg(feature = "persistent")]
 pub type MyStorage = teloxide::dispatching::dialogue::RedisStorage<
-    teloxide::dispatching::dialogue::serializer::Bincode,
+    teloxide::dispatching::dialogue::serializer::Json,
 >;
 
 pub type MyDialogue = Dialogue<ChannelState, MyStorage>;
@@ -210,7 +210,7 @@ pub async fn create_storage(_options: &Options) -> Result<Arc<MyStorage>> {
 pub async fn create_storage(options: &Options) -> Result<Arc<MyStorage>> {
     MyStorage::open(
         options.redis_host.as_ref(),
-        teloxide::dispatching::dialogue::serializer::Bincode,
+        teloxide::dispatching::dialogue::serializer::Json,
     )
     .await
     .into_diagnostic()

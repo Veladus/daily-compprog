@@ -2,7 +2,6 @@ use miette::{miette, IntoDiagnostic, Result};
 use serde::de::DeserializeOwned;
 use serde::*;
 
-
 pub const BASE: &str = "https://codeforces.com";
 pub const API_BASE: &str = "https://codeforces.com/api";
 pub const TAGS: &[&str] = &[
@@ -76,8 +75,37 @@ pub struct PartyMember {
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
 pub struct Party {
     #[serde(rename = "contestId")]
-    pub contest_id: Option<String>,
+    pub contest_id: Option<u64>,
     pub members: Vec<PartyMember>,
+}
+
+#[derive(Debug, Clone, Copy, Hash, Ord, PartialOrd, Eq, PartialEq)]
+pub enum VerdictCategory {
+    JudgingNotCompleted,
+    Incorrect,
+    Correct,
+}
+
+#[derive(Debug, Clone, Copy, Hash, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum Verdict {
+    Failed,
+    Ok,
+    Partial,
+    CompilationError,
+    RuntimeError,
+    WrongAnswer,
+    PresentationError,
+    TimeLimitExceeded,
+    MemoryLimitExceeded,
+    IdlenessLimitExceeded,
+    SecurityViolated,
+    Crashed,
+    InputPreparationCrashed,
+    Challenged,
+    Skipped,
+    Testing,
+    Rejected,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
@@ -87,7 +115,7 @@ pub struct Submission {
     pub contest_id: u64,
     pub problem: Problem,
     pub author: Party,
-    pub verdict: Option<String>,
+    pub verdict: Option<Verdict>,
 }
 
 #[derive(Debug, Clone)]
@@ -125,6 +153,32 @@ impl Problem {
             ))?,
             self.index
         ))
+    }
+}
+
+impl Verdict {
+    pub fn category(&self) -> VerdictCategory {
+        use Verdict::*;
+        use VerdictCategory::*;
+        match self {
+            Ok => Correct,
+            Partial
+            | WrongAnswer
+            | PresentationError
+            | TimeLimitExceeded
+            | MemoryLimitExceeded
+            | IdlenessLimitExceeded
+            | Challenged
+            | RuntimeError => Incorrect,
+            Failed
+            | SecurityViolated
+            | Crashed
+            | InputPreparationCrashed
+            | Rejected
+            | Skipped
+            | Testing
+            | CompilationError => JudgingNotCompleted,
+        }
     }
 }
 

@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
             telegram_bot::subsystem_handler(opts_rc2, telegram_recv, sched_send, subsys)
         })
         .catch_signals()
-        .handle_shutdown_requests(Duration::from_millis(3000))
+        .handle_shutdown_requests(Duration::from_secs(20))
         .await
         .map_err(Into::into)
 }

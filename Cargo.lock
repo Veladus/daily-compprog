@@ -162,15 +162,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 
 [[package]]
-name = "bincode"
-version = "1.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -381,6 +372,7 @@ dependencies = [
  "chrono",
  "clap",
  "env_logger",
+ "futures",
  "log",
  "miette",
  "reqwest",
@@ -1657,7 +1649,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19017dde82bddcbbdf8e40484f23985f4097b1baef4f7c0e006195ad1e6d4e3c"
 dependencies = [
  "aquamarine",
- "bincode",
  "bytes",
  "derive_more",
  "dptree",

@@ -70,6 +70,7 @@ pub async fn subsystem_handler(
     }
 
     // wait for telegram dispatcher to terminate
+    log::info!("Shutting down Telegram Bot (waiting for dispatcher)...");
     shutdown_result?.await;
     log::info!("Shut down Telegram Bot");
     Ok(())

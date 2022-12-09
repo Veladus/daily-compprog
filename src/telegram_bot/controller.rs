@@ -1,22 +1,28 @@
 use miette::{miette, IntoDiagnostic, Result};
+use std::collections::HashMap;
 use std::sync::Arc;
 use teloxide::dispatching::dialogue::Storage;
 use teloxide::prelude::*;
 use tokio::sync::oneshot;
 
+use crate::codeforces;
 use crate::telegram_bot::dispatcher::MyStorage;
 use crate::telegram_bot::ChannelState;
 use TelegramControlCommand::*;
 
 #[derive(Debug)]
 pub enum TelegramControlCommand {
-    SendMessage {
-        chat_id: ChatId,
-        message: String,
-    },
     GetChannelState {
         chat_id: ChatId,
         return_send: oneshot::Sender<ChannelState>,
+    },
+    SetAndNotifyDailyProblem {
+        chat_id: ChatId,
+        problem: codeforces::Problem,
+    },
+    UpdateSolvingStatus {
+        chat_id: ChatId,
+        status: HashMap<codeforces::Handle, codeforces::VerdictCategory>,
     },
 }
 
@@ -26,10 +32,6 @@ pub async fn handle(
     storage: Arc<MyStorage>,
 ) -> Result<()> {
     match command {
-        SendMessage { chat_id, message } => {
-            bot.send_message(chat_id, message).await.into_diagnostic()?;
-            Ok(())
-        }
         GetChannelState {
             chat_id,
             return_send,
@@ -49,6 +51,69 @@ pub async fn handle(
             return_send
                 .send(cloned_state)
                 .map_err(|_| miette!("Could not send channel state for {:?}", chat_id))
+        }
+        SetAndNotifyDailyProblem { chat_id, problem } => {
+            let mut state: ChannelState = storage
+                .clone()
+                .get_dialogue(chat_id)
+                .await
+                .into_diagnostic()?
+                .unwrap_or_default();
+            // update problem
+            state.current_daily_problem = Some(problem);
+
+            // update message
+            let message = bot
+                .send_message(chat_id, state.daily_message(&HashMap::new())?)
+                .await
+                .into_diagnostic()?;
+            state.current_daily_message = Some(message);
+
+            storage
+                .update_dialogue(chat_id, state)
+                .await
+                .into_diagnostic()?;
+            Ok(())
+        }
+        UpdateSolvingStatus { chat_id, status } => {
+            log::debug!(
+                "Current solving status for chat {:?} is {:?}",
+                chat_id,
+                status
+            );
+            let mut state: ChannelState = storage
+                .clone()
+                .get_dialogue(chat_id)
+                .await
+                .into_diagnostic()?
+                .unwrap_or_default();
+
+            let cur_message = state.current_daily_message.as_ref().ok_or_else(|| {
+                miette!("Tried to update daily message, without there beeing a daily message")
+            })?;
+            let new_text = state.daily_message(&status)?;
+            log::debug!(
+                "New text: \"{:?}\"\nOld text: \"{:?}\"",
+                new_text,
+                cur_message.text()
+            );
+
+            if new_text
+                != cur_message
+                    .text()
+                    .ok_or_else(|| miette!("Daily message does not have text"))?
+            {
+                state.current_daily_message = Some(
+                    bot.edit_message_text(chat_id, cur_message.id, state.daily_message(&status)?)
+                        .await
+                        .into_diagnostic()?,
+                );
+                storage
+                    .update_dialogue(chat_id, state)
+                    .await
+                    .into_diagnostic()?;
+            }
+            Ok(())
         }
     }
 }
