@@ -61,9 +61,9 @@ pub struct Problem {
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
 pub struct User {
     pub handle: Handle,
-    pub rating: u64,
+    pub rating: Option<u64>,
     #[serde(rename = "maxRating")]
-    pub max_rating: u64,
+    pub max_rating: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
