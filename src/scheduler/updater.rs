@@ -16,10 +16,13 @@ async fn update(
     telegram_send: Arc<mpsc::UnboundedSender<TelegramControlCommand>>,
 ) -> Result<()> {
     let channel_state = util::get_channel_state(chat_id, telegram_send.as_ref()).await?;
-    let current_problem = channel_state
-        .current_daily_problem()
-        .as_ref()
-        .ok_or_else(|| miette!("Tried to update daily message without daily problem"))?;
+    let current_problem = match channel_state.current_daily_problem().as_ref() {
+        Some(problem) => problem,
+        None => {
+            log::debug!("Tried to update daily message without daily problem");
+            return Ok(());
+        }
+    };
     let client = codeforces::Client::new();
 
     let verdict_data: HashMap<codeforces::Handle, codeforces::VerdictCategory> =
