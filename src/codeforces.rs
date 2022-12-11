@@ -192,11 +192,7 @@ impl Verdict {
 impl Client {
     pub fn new() -> Self {
         Self {
-            rate_limiter: RateLimiter::direct(
-                Quota::with_period(Duration::from_secs(2))
-                    .unwrap()
-                    .allow_burst(nonzero!(2u32)),
-            ),
+            rate_limiter: RateLimiter::direct(Quota::with_period(Duration::from_secs(2)).unwrap()),
             reqwest_client: reqwest::Client::new(),
         }
     }
