@@ -3,7 +3,7 @@ use governor::middleware::NoOpMiddleware;
 use governor::state::{InMemoryState, NotKeyed};
 use governor::{Jitter, Quota, RateLimiter};
 use miette::{miette, IntoDiagnostic, Result};
-use nonzero_ext::nonzero;
+
 use serde::de::DeserializeOwned;
 use serde::*;
 use std::time::Duration;
