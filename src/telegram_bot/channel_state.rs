@@ -1,6 +1,7 @@
 use crate::codeforces;
 use miette::{miette, Result};
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 use teloxide::prelude::*;
@@ -42,8 +43,21 @@ impl ChannelState {
 
             if !self.registered_users.is_empty() {
                 message.push_str("\n\n");
-                for (display_name, handle) in &self.registered_users {
-                    message.push_str(status_str(status.get(handle).copied()));
+
+                let mut data: Vec<_> = self
+                    .registered_users
+                    .iter()
+                    .map(|(display_name, handle)| (status.get(handle).copied(), display_name))
+                    .collect();
+                data.sort_unstable_by(|(verdict1, name1), (verdict2, name2)| {
+                    match verdict1.cmp(verdict2) {
+                        Ordering::Equal => name1.cmp(name2),
+                        order @ _ => order.reverse(),
+                    }
+                });
+
+                for (verdict_category_opt, display_name) in data {
+                    message.push_str(status_str(verdict_category_opt));
                     message.push(' ');
                     message.push_str(display_name);
                     message.push('\n');
