@@ -70,6 +70,7 @@ async fn register(
     bot: Arc<Bot>,
     dialogue: MyDialogue,
     command: ChannelCommand,
+    cf_client: Arc<codeforces::Client>,
     msg: Message,
 ) -> Result<()> {
     if let ChannelCommand::Register {
@@ -78,8 +79,7 @@ async fn register(
     } = command
     {
         if let Some(handle) =
-            codeforces::Handle::from_checked(codeforces_handle.clone(), &codeforces::Client::new())
-                .await
+            codeforces::Handle::from_checked(codeforces_handle.clone(), cf_client.as_ref()).await
         {
             let message_str = {
                 // get and change storage
@@ -191,10 +191,11 @@ pub async fn setup(
     bot: Arc<Bot>,
     sched_send: mpsc::UnboundedSender<SchedulerControlCommand>,
     storage: Arc<MyStorage>,
+    cf_client: Arc<codeforces::Client>,
 ) -> (ShutdownToken, JoinHandle<()>) {
     let mut dispatcher = Dispatcher::builder(bot, schema())
         // storage is an Arc<_>, so cloning it keeps the connection
-        .dependencies(dptree::deps![storage, sched_send])
+        .dependencies(dptree::deps![storage, sched_send, cf_client])
         .build();
 
     let shutdown_token = dispatcher.shutdown_token();

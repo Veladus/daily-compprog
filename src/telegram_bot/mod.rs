@@ -1,4 +1,4 @@
-use crate::options;
+use crate::{codeforces, options};
 use miette::{IntoDiagnostic, Result};
 use std::sync::Arc;
 use teloxide::Bot;
@@ -17,6 +17,7 @@ pub async fn subsystem_handler(
     options: Arc<options::Options>,
     mut telegram_recv: mpsc::UnboundedReceiver<TelegramControlCommand>,
     sched_send: mpsc::UnboundedSender<SchedulerControlCommand>,
+    cf_client: Arc<codeforces::Client>,
     subsys: SubsystemHandle,
 ) -> Result<()> {
     log::info!("Starting Telegram Bot...");
@@ -25,7 +26,7 @@ pub async fn subsystem_handler(
     let bot = Arc::new(Bot::from_env());
     let storage = dispatcher::create_storage(options.as_ref()).await?;
     let (shutdown_token, mut join_handle) =
-        dispatcher::setup(bot.clone(), sched_send, storage.clone()).await;
+        dispatcher::setup(bot.clone(), sched_send, storage.clone(), cf_client).await;
 
     log::info!("Started Telegram Bot");
 

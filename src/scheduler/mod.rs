@@ -1,5 +1,5 @@
-use crate::options;
 use crate::telegram_bot::TelegramControlCommand;
+use crate::{codeforces, options};
 use async_cron_scheduler::{JobId, Scheduler};
 use chrono::Local;
 use miette::{IntoDiagnostic, Result};
@@ -27,6 +27,7 @@ pub async fn subsystem_handler(
     _options: Arc<options::Options>,
     mut sched_recv: mpsc::UnboundedReceiver<SchedulerControlCommand>,
     telegram_send: mpsc::UnboundedSender<TelegramControlCommand>,
+    cf_client: Arc<codeforces::Client>,
     subsys: SubsystemHandle,
 ) -> Result<()> {
     log::info!("Setting up scheduler service...");
@@ -44,15 +45,22 @@ pub async fn subsystem_handler(
 
     let mut open_tasks = Vec::new();
     let spawn_task = |command| {
-        let (storage_clone, scheduler_clone, telegram_send_clone) = (
+        let (storage_clone, scheduler_clone, telegram_send_clone, cf_client_clone) = (
             storage_arc.clone(),
             scheduler_arc.clone(),
             telegram_send_arc.clone(),
+            cf_client.clone(),
         );
         tokio::spawn(async move {
-            controller::handle(command, storage_clone, scheduler_clone, telegram_send_clone)
-                .await
-                .unwrap()
+            controller::handle(
+                command,
+                storage_clone,
+                scheduler_clone,
+                telegram_send_clone,
+                cf_client_clone,
+            )
+            .await
+            .unwrap()
         })
     };
     // main control loop

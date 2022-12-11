@@ -1,6 +1,12 @@
+use governor::clock::DefaultClock;
+use governor::middleware::NoOpMiddleware;
+use governor::state::{InMemoryState, NotKeyed};
+use governor::{Jitter, Quota, RateLimiter};
 use miette::{miette, IntoDiagnostic, Result};
+use nonzero_ext::nonzero;
 use serde::de::DeserializeOwned;
 use serde::*;
+use std::time::Duration;
 
 pub const BASE: &str = "https://codeforces.com";
 pub const API_BASE: &str = "https://codeforces.com/api";
@@ -118,8 +124,9 @@ pub struct Submission {
     pub verdict: Option<Verdict>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Client {
+    rate_limiter: RateLimiter<NotKeyed, InMemoryState, DefaultClock, NoOpMiddleware>,
     reqwest_client: reqwest::Client,
 }
 
@@ -185,6 +192,11 @@ impl Verdict {
 impl Client {
     pub fn new() -> Self {
         Self {
+            rate_limiter: RateLimiter::direct(
+                Quota::with_period(Duration::from_secs(2))
+                    .unwrap()
+                    .allow_burst(nonzero!(2u32)),
+            ),
             reqwest_client: reqwest::Client::new(),
         }
     }
@@ -193,6 +205,13 @@ impl Client {
     where
         T: DeserializeOwned,
     {
+        self.rate_limiter
+            .until_ready_with_jitter(Jitter::new(
+                Duration::from_millis(50),
+                Duration::from_millis(500),
+            ))
+            .await;
+
         #[derive(Debug, Clone, Deserialize, Serialize)]
         struct CallResponse<U> {
             status: String,

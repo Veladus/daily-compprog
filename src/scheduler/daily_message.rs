@@ -15,9 +15,10 @@ const CRON_SCHEDULE: &str = "0 30 7 * * * *";
 
 async fn daily_message(
     chat_id: ChatId,
-    telegram_send: Arc<mpsc::UnboundedSender<TelegramControlCommand>>,
+    telegram_send: &mpsc::UnboundedSender<TelegramControlCommand>,
+    cf_client: &codeforces::Client,
 ) -> Result<()> {
-    let channel_state = util::get_channel_state(chat_id, telegram_send.as_ref()).await?;
+    let channel_state = util::get_channel_state(chat_id, telegram_send).await?;
 
     let mut rng: Xorshift128 = {
         let unix_time_s = SystemTime::now()
@@ -34,10 +35,9 @@ async fn daily_message(
     };
 
     log::info!("Starting to prepare daily message for {chat_id:?}");
-    let client = codeforces::Client::new();
     let problem = loop {
         let tag_index = (rng.next_u64() as usize) % codeforces::TAGS.len();
-        let problems = client
+        let problems = cf_client
             .get_problems_by_tag(std::iter::once(codeforces::TAGS[tag_index]))
             .await?;
         let mut problems: Vec<_> = problems
@@ -67,7 +67,6 @@ async fn daily_message(
 
     log::info!("Sending daily message to {:?}", chat_id);
     telegram_send
-        .as_ref()
         .send(SetAndNotifyDailyProblem { chat_id, problem })
         .into_diagnostic()
 }
@@ -77,13 +76,23 @@ pub(super) async fn start(
     sched_storage_rw: Arc<RwLock<SchedulerStorage>>,
     scheduler_rw: Arc<RwLock<MyScheduler>>,
     telegram_send: Arc<mpsc::UnboundedSender<TelegramControlCommand>>,
+    cf_client: Arc<codeforces::Client>,
 ) -> Result<()> {
     log::info!("Registered daily messages for {chat_id}");
     let mut scheduler = scheduler_rw.as_ref().write().await;
 
     let job_id = util::register_to_schedule(CRON_SCHEDULE, &mut scheduler, move |_id| {
         let telegram_send_clone = telegram_send.clone();
-        tokio::spawn(async move { daily_message(chat_id, telegram_send_clone).await.unwrap() });
+        let cf_client_clone = cf_client.clone();
+        tokio::spawn(async move {
+            daily_message(
+                chat_id,
+                telegram_send_clone.as_ref(),
+                cf_client_clone.as_ref(),
+            )
+            .await
+            .unwrap()
+        });
     })
     .await?;
 
