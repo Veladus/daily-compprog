@@ -64,7 +64,7 @@ impl ChannelState {
                 }
             }
 
-            Ok(message)
+            Ok(message.trim_end().into())
         } else {
             Err(miette!(
                 "Tried to get daily message for a channel which does not have an active daily problem"
