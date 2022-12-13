@@ -385,7 +385,6 @@ dependencies = [
  "governor",
  "log",
  "miette",
- "nonzero_ext",
  "reqwest",
  "serde",
  "serde_json",

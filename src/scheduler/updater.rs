@@ -28,7 +28,7 @@ async fn update(
     let verdict_data: HashMap<codeforces::Handle, codeforces::VerdictCategory> =
         stream::iter(channel_state.registered_users().values())
             .filter_map(|handle| async move {
-                let submissions_res = cf_client.get_user_submissions(handle.as_str()).await;
+                let submissions_res = handle.get_submissions(cf_client).await;
                 match submissions_res {
                     Err(report) => {
                         log::error!(

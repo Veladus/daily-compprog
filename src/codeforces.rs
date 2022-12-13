@@ -149,6 +149,11 @@ impl Handle {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    pub async fn get_submissions(&self, client: &Client) -> Result<Vec<Submission>> {
+        let url = format!("{API_BASE}/user.status");
+        client.call(&url, &[("handle", self.as_str())]).await
+    }
 }
 
 impl Problem {
@@ -188,6 +193,8 @@ impl Verdict {
         }
     }
 }
+
+impl Handle {}
 
 impl Client {
     pub fn new() -> Self {
@@ -234,11 +241,6 @@ impl Client {
         response
             .result
             .ok_or_else(|| miette!("Codeforces did not provide a result"))
-    }
-
-    pub async fn get_user_submissions(&self, handle: &str) -> Result<Vec<Submission>> {
-        let url = format!("{API_BASE}/user.status");
-        self.call(&url, &[("handle", handle)]).await
     }
 
     pub async fn get_problems_by_tag(

@@ -2,8 +2,10 @@ use crate::codeforces;
 use crate::scheduler::{util, MyScheduler, SchedulerStorage};
 use crate::telegram_bot::TelegramControlCommand;
 use crate::telegram_bot::TelegramControlCommand::SetAndNotifyDailyProblem;
+use futures::StreamExt;
 use miette::{IntoDiagnostic, Result};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -34,6 +36,24 @@ async fn daily_message(
         SeedableRng::from_seed(&states[..])
     };
 
+    let known_problems: HashSet<codeforces::Problem> = {
+        futures::stream::iter(channel_state.registered_users().values())
+            .filter_map(|handle| async {
+                match handle.get_submissions(cf_client).await {
+                    Ok(submissions) => Some(submissions),
+                    Err(err) => {
+                        log::warn!("Error getting submissions for {}\n{}", handle.as_str(), err);
+                        None
+                    }
+                }
+            })
+            .flat_map(|submissions| {
+                futures::stream::iter(submissions.into_iter().map(|submission| submission.problem))
+            })
+            .collect()
+            .await
+    };
+
     log::info!("Starting to prepare daily message for {chat_id:?}");
     let problem = loop {
         let tag_index = (rng.next_u64() as usize) % codeforces::TAGS.len();
@@ -45,7 +65,7 @@ async fn daily_message(
             .filter(|problem| {
                 problem.rating.map_or(false, |rating| {
                     channel_state.rating_range().contains(&rating)
-                })
+                }) && !known_problems.contains(problem)
             })
             .collect();
         log::debug!(
