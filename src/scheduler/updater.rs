@@ -9,7 +9,7 @@ use std::sync::Arc;
 use teloxide::prelude::ChatId;
 use tokio::sync::{mpsc, RwLock};
 
-const CRON_SCHEDULE: &str = "30 * * * * * *";
+const CRON_SCHEDULE: &str = "30 0/5 * * * * *";
 
 async fn update(
     chat_id: ChatId,
