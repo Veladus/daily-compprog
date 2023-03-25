@@ -25,11 +25,11 @@ async fn update(
         }
     };
 
-    let verdict_data: HashMap<codeforces::Handle, codeforces::VerdictCategory> =
+    let submissions_per_handle: HashMap<codeforces::Handle, Vec<codeforces::Submission>> =
         stream::iter(channel_state.registered_users().values())
             .filter_map(|handle| async move {
-                let submissions_res = handle.get_submissions(cf_client).await;
-                match submissions_res {
+                match handle.get_submissions(cf_client).await {
+                    Ok(submissions) => Some((handle.clone(), submissions)),
                     Err(report) => {
                         log::error!(
                             "Error getting submissions for {}\n{}",
@@ -38,25 +38,39 @@ async fn update(
                         );
                         None
                     }
-                    Ok(submissions) => submissions
-                        .iter()
-                        .filter_map(|submission| {
-                            submission
-                                .verdict
-                                .filter(|_| &submission.problem == current_problem)
-                                .map(|verdict| verdict.category())
-                        })
-                        .max()
-                        .map(|category| (handle.clone(), category)),
                 }
             })
             .collect()
             .await;
 
+    let status_per_problem = {
+        let mut status_per_problem: HashMap<
+            codeforces::Problem,
+            HashMap<codeforces::Handle, codeforces::VerdictCategory>,
+        > = HashMap::new();
+
+        for (handle, submissions) in submissions_per_handle {
+            for submission in submissions {
+                if let Some(verdict) = submission.verdict {
+                    status_per_problem
+                        .entry(submission.problem)
+                        .or_insert_with(Default::default)
+                        .entry(handle.clone())
+                        .and_modify(|previous_category| {
+                            *previous_category = Ord::max(*previous_category, verdict.category());
+                        })
+                        .or_insert_with(|| verdict.category());
+                }
+            }
+        }
+
+        status_per_problem
+    };
+
     telegram_send
         .send(UpdateSolvingStatus {
             chat_id,
-            status: verdict_data,
+            status: status_per_problem,
         })
         .into_diagnostic()
 }

@@ -22,7 +22,8 @@ pub enum TelegramControlCommand {
     },
     UpdateSolvingStatus {
         chat_id: ChatId,
-        status: HashMap<codeforces::Handle, codeforces::VerdictCategory>,
+        status:
+            HashMap<codeforces::Problem, HashMap<codeforces::Handle, codeforces::VerdictCategory>>,
     },
 }
 

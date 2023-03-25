@@ -14,6 +14,7 @@ pub struct ChannelState {
     pub(super) rating_range: Option<RangeInclusive<u64>>,
     pub(super) current_daily_problem: Option<codeforces::Problem>,
     pub(super) current_daily_message: Option<Message>,
+    pub(super) archived_daily_messages: HashMap<codeforces::Problem, Vec<Message>>,
 }
 
 impl ChannelState {
@@ -27,8 +28,9 @@ impl ChannelState {
         &self.current_daily_problem
     }
 
-    pub fn daily_message(
+    pub fn message_text_for_problem(
         &self,
+        problem: &codeforces::Problem,
         status: &HashMap<codeforces::Handle, codeforces::VerdictCategory>,
     ) -> Result<String> {
         let status_str = |verdict_category_opt| match verdict_category_opt {
@@ -38,37 +40,31 @@ impl ChannelState {
             None => "⬜",
         };
 
-        if let Some(problem) = &self.current_daily_problem {
-            let mut message = format!("Today's problem is: {}", problem.url()?);
+        let mut message = format!("Today's problem is: {}", problem.url()?);
 
-            if !self.registered_users.is_empty() {
-                message.push_str("\n\n");
+        if !self.registered_users.is_empty() {
+            message.push_str("\n\n");
 
-                let mut data: Vec<_> = self
-                    .registered_users
-                    .iter()
-                    .map(|(display_name, handle)| (status.get(handle).copied(), display_name))
-                    .collect();
-                data.sort_unstable_by(|(verdict1, name1), (verdict2, name2)| {
-                    match verdict1.cmp(verdict2) {
-                        Ordering::Equal => name1.cmp(name2),
-                        order @ _ => order.reverse(),
-                    }
-                });
-
-                for (verdict_category_opt, display_name) in data {
-                    message.push_str(status_str(verdict_category_opt));
-                    message.push(' ');
-                    message.push_str(display_name);
-                    message.push('\n');
+            let mut data: Vec<_> = self
+                .registered_users
+                .iter()
+                .map(|(display_name, handle)| (status.get(handle).copied(), display_name))
+                .collect();
+            data.sort_unstable_by(|(verdict1, name1), (verdict2, name2)| {
+                match verdict1.cmp(verdict2) {
+                    Ordering::Equal => name1.cmp(name2),
+                    order @ _ => order.reverse(),
                 }
-            }
+            });
 
-            Ok(message.trim_end().into())
-        } else {
-            Err(miette!(
-                "Tried to get daily message for a channel which does not have an active daily problem"
-            ))
+            for (verdict_category_opt, display_name) in data {
+                message.push_str(status_str(verdict_category_opt));
+                message.push(' ');
+                message.push_str(display_name);
+                message.push('\n');
+            }
         }
+
+        Ok(message.trim_end().into())
     }
 }
