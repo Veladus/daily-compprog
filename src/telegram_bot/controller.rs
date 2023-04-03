@@ -60,15 +60,29 @@ pub async fn handle(
                 .await
                 .into_diagnostic()?
                 .unwrap_or_default();
-            // update problem
-            state.current_daily_problem = Some(problem);
+
+            // archive problem
+            if let (Some(current_problem), Some(current_message)) =
+                (state.current_daily_problem, state.current_daily_message)
+            {
+                state
+                    .archived_daily_messages
+                    .entry(current_problem)
+                    .or_default()
+                    .push(current_message);
+            }
 
             // update message
             let message = bot
-                .send_message(chat_id, state.daily_message(&HashMap::new())?)
+                .send_message(
+                    chat_id,
+                    state.message_text_for_problem(&problem, &HashMap::new())?,
+                )
                 .await
                 .into_diagnostic()?;
             state.current_daily_message = Some(message);
+            // update problem
+            state.current_daily_problem = Some(problem);
 
             storage
                 .update_dialogue(chat_id, state)
