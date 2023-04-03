@@ -17,13 +17,6 @@ async fn update(
     cf_client: &codeforces::Client,
 ) -> Result<()> {
     let channel_state = util::get_channel_state(chat_id, telegram_send).await?;
-    let current_problem = match channel_state.current_daily_problem().as_ref() {
-        Some(problem) => problem,
-        None => {
-            log::debug!("Tried to update daily message without daily problem");
-            return Ok(());
-        }
-    };
 
     let submissions_per_handle: HashMap<codeforces::Handle, Vec<codeforces::Submission>> =
         stream::iter(channel_state.registered_users().values())

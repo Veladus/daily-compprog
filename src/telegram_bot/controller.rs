@@ -63,13 +63,13 @@ pub async fn handle(
 
             // archive problem
             if let (Some(current_problem), Some(current_message)) =
-                (state.current_daily_problem, state.current_daily_message)
+                (&state.current_daily_problem, &state.current_daily_message)
             {
                 state
                     .archived_daily_messages
-                    .entry(current_problem)
+                    .entry(current_problem.clone())
                     .or_default()
-                    .push(current_message);
+                    .push(current_message.clone());
             }
 
             // update message
@@ -103,26 +103,40 @@ pub async fn handle(
                 .into_diagnostic()?
                 .unwrap_or_default();
 
-            let cur_message = state.current_daily_message.as_ref().ok_or_else(|| {
-                miette!("Tried to update daily message, without there beeing a daily message")
-            })?;
-            let new_text = state.daily_message(&status)?;
-            log::debug!(
-                "New text: \"{:?}\"\nOld text: \"{:?}\"",
-                new_text,
-                cur_message.text()
-            );
+            let default_map = HashMap::new();
+            let saved_state = state.clone();
+            let mut changed = false;
 
-            if new_text
-                != cur_message
-                    .text()
-                    .ok_or_else(|| miette!("Daily message does not have text"))?
-            {
-                state.current_daily_message = Some(
-                    bot.edit_message_text(chat_id, cur_message.id, state.daily_message(&status)?)
-                        .await
-                        .into_diagnostic()?,
-                );
+            // update current daily message
+            if let (Some(daily_problem), Some(daily_message)) = (
+                &state.current_daily_problem,
+                &mut state.current_daily_message,
+            ) {
+                changed |= update_message(
+                    &saved_state,
+                    daily_problem,
+                    status.get(daily_problem).unwrap_or(&default_map),
+                    &bot,
+                    daily_message,
+                )
+                .await?;
+            }
+
+            // update archived messages
+            for (problem, messages) in state.archived_daily_messages.iter_mut() {
+                for message in messages.iter_mut() {
+                    changed |= update_message(
+                        &saved_state,
+                        problem,
+                        status.get(problem).unwrap_or(&default_map),
+                        &bot,
+                        message,
+                    )
+                    .await?;
+                }
+            }
+
+            if changed {
                 storage
                     .update_dialogue(chat_id, state)
                     .await
@@ -131,4 +145,44 @@ pub async fn handle(
             Ok(())
         }
     }
+}
+
+async fn update_message(
+    channel: &ChannelState,
+    problem: &codeforces::Problem,
+    status: &HashMap<codeforces::Handle, codeforces::VerdictCategory>,
+    bot: &Bot,
+    message: &mut Message,
+) -> Result<bool> {
+    let new_text = channel.message_text_for_problem(problem, status)?;
+
+    if new_text
+        == message
+            .text()
+            .ok_or_else(|| miette!("Tried updating message without text"))?
+    {
+        log::trace!(
+            "Message {:?} in {:?} for problem {:?} does not need to be changed.\nOld: {:?}\nNew:{:?}",
+            message.id,
+            message.chat.id,
+            problem,
+            message.text().unwrap(),
+            new_text,
+        );
+        return Ok(false);
+    }
+
+    log::debug!(
+        "Changing message {:?} in {:?} from {:?} to {:?}",
+        message.id,
+        message.chat.id,
+        message.text().unwrap(),
+        new_text
+    );
+    // update message
+    *message = bot
+        .edit_message_text(message.chat.id, message.id, new_text)
+        .await
+        .into_diagnostic()?;
+    Ok(true)
 }

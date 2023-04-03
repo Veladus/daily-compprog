@@ -1,5 +1,5 @@
 use crate::codeforces;
-use miette::{miette, Result};
+use miette::Result;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -24,6 +24,7 @@ impl ChannelState {
     pub fn registered_users(&self) -> &HashMap<String, codeforces::Handle> {
         &self.registered_users
     }
+    #[allow(dead_code)]
     pub fn current_daily_problem(&self) -> &Option<codeforces::Problem> {
         &self.current_daily_problem
     }
@@ -53,7 +54,7 @@ impl ChannelState {
             data.sort_unstable_by(|(verdict1, name1), (verdict2, name2)| {
                 match verdict1.cmp(verdict2) {
                     Ordering::Equal => name1.cmp(name2),
-                    order @ _ => order.reverse(),
+                    order => order.reverse(),
                 }
             });
 
