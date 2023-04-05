@@ -1,4 +1,5 @@
 use crate::codeforces;
+use crate::options::Options;
 use crate::scheduler::{util, MyScheduler, SchedulerStorage};
 use crate::telegram_bot::TelegramControlCommand;
 use crate::telegram_bot::TelegramControlCommand::SetAndNotifyDailyProblem;
@@ -12,8 +13,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use teloxide::prelude::*;
 use tokio::sync::{mpsc, RwLock};
 use xorshift::{Rng, SeedableRng, Xorshift128};
-
-const CRON_SCHEDULE: &str = "0 30 7 * * * *";
 
 async fn daily_message(
     chat_id: ChatId,
@@ -92,6 +91,7 @@ async fn daily_message(
 }
 
 pub(super) async fn start(
+    options: Arc<Options>,
     chat_id: ChatId,
     sched_storage_rw: Arc<RwLock<SchedulerStorage>>,
     scheduler_rw: Arc<RwLock<MyScheduler>>,
@@ -101,7 +101,7 @@ pub(super) async fn start(
     log::info!("Registered daily messages for {chat_id}");
     let mut scheduler = scheduler_rw.as_ref().write().await;
 
-    let job_id = util::register_to_schedule(CRON_SCHEDULE, &mut scheduler, move |_id| {
+    let job_id = util::register_to_schedule(&options.messages_cron, &mut scheduler, move |_id| {
         let telegram_send_clone = telegram_send.clone();
         let cf_client_clone = cf_client.clone();
         tokio::spawn(async move {

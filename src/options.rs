@@ -1,5 +1,8 @@
+use async_cron_scheduler::cron::Schedule;
 use clap::Parser;
 use env_logger::Env;
+use miette::{IntoDiagnostic, Result};
+use std::str::FromStr;
 
 #[derive(Parser)]
 #[clap(version, about, long_about = None)]
@@ -9,7 +12,7 @@ pub struct Options {
     pub verbose: u8,
 
     /// Cron options for message schedule
-    #[arg(long, default_value_t = String::from("30 7 * * * *"))]
+    #[arg(long, default_value_t = String::from("0 30 7 * * * *"))]
     pub messages_cron: String,
 
     /// Address of Redis instance
@@ -18,7 +21,7 @@ pub struct Options {
     pub redis_host: String,
 }
 
-pub fn parse() -> Options {
+pub fn parse() -> Result<Options> {
     let opts = Options::parse();
 
     let debug_level = match opts.verbose {
@@ -28,5 +31,8 @@ pub fn parse() -> Options {
     };
     env_logger::Builder::from_env(Env::default().default_filter_or(debug_level)).init();
 
-    opts
+    // check options
+    Schedule::from_str(&opts.messages_cron).into_diagnostic()?;
+
+    Ok(opts)
 }

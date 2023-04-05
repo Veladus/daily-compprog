@@ -12,7 +12,7 @@ use tokio_graceful_shutdown::Toplevel;
 #[tokio::main]
 async fn main() -> Result<()> {
     // Query command line options and initialize logging
-    let opts = options::parse();
+    let opts = options::parse()?;
 
     let opts_arc = Arc::new(opts);
     let opts_arc2 = opts_arc.clone();

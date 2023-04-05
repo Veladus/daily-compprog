@@ -24,7 +24,7 @@ pub(self) struct SchedulerStorage {
 type MyScheduler = Scheduler<Local>;
 
 pub async fn subsystem_handler(
-    _options: Arc<options::Options>,
+    options: Arc<options::Options>,
     mut sched_recv: mpsc::UnboundedReceiver<SchedulerControlCommand>,
     telegram_send: mpsc::UnboundedSender<TelegramControlCommand>,
     cf_client: Arc<codeforces::Client>,
@@ -45,7 +45,8 @@ pub async fn subsystem_handler(
 
     let mut open_tasks = Vec::new();
     let spawn_task = |command| {
-        let (storage_clone, scheduler_clone, telegram_send_clone, cf_client_clone) = (
+        let (options_clone, storage_clone, scheduler_clone, telegram_send_clone, cf_client_clone) = (
+            options.clone(),
             storage_arc.clone(),
             scheduler_arc.clone(),
             telegram_send_arc.clone(),
@@ -54,6 +55,7 @@ pub async fn subsystem_handler(
         tokio::spawn(async move {
             controller::handle(
                 command,
+                options_clone,
                 storage_clone,
                 scheduler_clone,
                 telegram_send_clone,
