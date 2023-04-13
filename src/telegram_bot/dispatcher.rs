@@ -1,7 +1,7 @@
-use crate::codeforces;
 use crate::options::Options;
 use crate::scheduler::SchedulerControlCommand;
-use crate::telegram_bot::channel_state::ChannelState;
+use crate::telegram_bot::{channel_state::ChannelState, TelegramControlCommand};
+use crate::{codeforces, util};
 use miette::{miette, IntoDiagnostic, Result};
 use std::sync::Arc;
 use teloxide::dispatching::{dialogue, ShutdownToken, UpdateHandler};
@@ -22,6 +22,8 @@ enum ChannelCommand {
     Help,
     #[command(description = "(Re)starts the bot in this channel.")]
     Start,
+    #[command(description = "Forces the bot to send a new daily message.")]
+    NewProblem,
     #[command(description = "Register a user.\n\tUsage: /register <display-name> <cf-handle>")]
     Register {
         display_name: String,
@@ -57,6 +59,27 @@ async fn start(
         .await
         .into_diagnostic()?;
     Ok(())
+}
+
+async fn new_problem(
+    bot: Arc<Bot>,
+    telegram_send: mpsc::UnboundedSender<TelegramControlCommand>,
+    cf_client: Arc<codeforces::Client>,
+    msg: Message,
+) -> Result<()> {
+    let channel_state = util::get_channel_state(msg.chat.id, &telegram_send).await?;
+
+    bot.send_message(msg.chat.id, "Forcing a new daily problem")
+        .await
+        .into_diagnostic()?;
+    telegram_send
+        .send(TelegramControlCommand::SetAndNotifyDailyProblem {
+            chat_id: msg.chat.id,
+            problem: channel_state
+                .find_daily_problem(cf_client.as_ref(), msg.chat.id)
+                .await?,
+        })
+        .into_diagnostic()
 }
 
 async fn help(bot: Arc<Bot>, msg: Message) -> Result<()> {
@@ -167,6 +190,7 @@ fn schema() -> UpdateHandler<miette::Error> {
     let command_handler = teloxide::filter_command::<ChannelCommand, _>()
         .branch(case![ChannelCommand::Start].endpoint(start))
         .branch(case![ChannelCommand::Help].endpoint(help))
+        .branch(case![ChannelCommand::NewProblem].endpoint(new_problem))
         .branch(
             case![ChannelCommand::SetRatingRange {
                 lower_bound,
@@ -189,13 +213,14 @@ fn schema() -> UpdateHandler<miette::Error> {
 
 pub async fn setup(
     bot: Arc<Bot>,
+    telegram_send: mpsc::UnboundedSender<TelegramControlCommand>,
     sched_send: mpsc::UnboundedSender<SchedulerControlCommand>,
     storage: Arc<MyStorage>,
     cf_client: Arc<codeforces::Client>,
 ) -> (ShutdownToken, JoinHandle<()>) {
     let mut dispatcher = Dispatcher::builder(bot, schema())
         // storage is an Arc<_>, so cloning it keeps the connection
-        .dependencies(dptree::deps![storage, sched_send, cf_client])
+        .dependencies(dptree::deps![storage, telegram_send, sched_send, cf_client])
         .build();
 
     let shutdown_token = dispatcher.shutdown_token();

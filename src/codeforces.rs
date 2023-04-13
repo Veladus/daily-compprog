@@ -4,9 +4,14 @@ use governor::state::{InMemoryState, NotKeyed};
 use governor::{Jitter, Quota, RateLimiter};
 use miette::{miette, IntoDiagnostic, Result};
 
+use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use serde::*;
+use std::any::Any;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::time::Duration;
+use tokio::sync::Mutex;
 
 pub const BASE: &str = "https://codeforces.com";
 pub const API_BASE: &str = "https://codeforces.com/api";
@@ -128,6 +133,7 @@ pub struct Submission {
 pub struct Client {
     rate_limiter: RateLimiter<NotKeyed, InMemoryState, DefaultClock, NoOpMiddleware>,
     reqwest_client: reqwest::Client,
+    cache: Mutex<RefCell<HashMap<String, Box<dyn Any + Sync + Send>>>>,
 }
 
 impl From<String> for Handle {
@@ -201,12 +207,13 @@ impl Client {
         Self {
             rate_limiter: RateLimiter::direct(Quota::with_period(Duration::from_secs(3)).unwrap()),
             reqwest_client: reqwest::Client::new(),
+            cache: Mutex::new(RefCell::new(HashMap::new())),
         }
     }
 
     async fn call<T>(&self, url: &str, query_params: &[(&str, &str)]) -> Result<T>
     where
-        T: DeserializeOwned,
+        T: DeserializeOwned + Clone + Sync + Send + 'static,
     {
         self.rate_limiter
             .until_ready_with_jitter(Jitter::new(
@@ -228,19 +235,37 @@ impl Client {
             .query(query_params)
             .send()
             .await
-            .into_diagnostic()?
-            .json::<CallResponse<T>>()
-            .await
             .into_diagnostic()?;
 
+        // handle too many requests
+        if response.status() == StatusCode::from_u16(503).into_diagnostic()? {
+            log::warn!("Too many requests to codeforces -- using cache");
+            if let Some(cached_value) = self.cache.lock().await.borrow().get(url) {
+                log::debug!("\tCached: {}", url);
+                return cached_value
+                    .downcast_ref::<T>()
+                    .map(|cache_ref| cache_ref.clone())
+                    .ok_or_else(|| miette!("Could not convert cached value to desired type"));
+            } else {
+                log::warn!("\tNot cached: {}", url);
+            }
+        }
+
+        // handle normal response
+        let call_response = response.json::<CallResponse<T>>().await.into_diagnostic()?;
         miette::ensure!(
-            response.status == "OK",
+            call_response.status == "OK",
             "Codeforces did not complete the request. Comment: {:?}",
-            response.comment,
+            call_response.comment,
         );
-        response
+        let result = call_response
             .result
-            .ok_or_else(|| miette!("Codeforces did not provide a result"))
+            .ok_or_else(|| miette!("Codeforces did not provide a result"))?;
+
+        // cache result
+        self.cache.lock().await.borrow_mut().insert(String::from(url), Box::new(result.clone()));
+
+        Ok(result)
     }
 
     pub async fn get_problems_by_tag(

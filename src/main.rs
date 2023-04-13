@@ -2,6 +2,7 @@ mod codeforces;
 mod options;
 mod scheduler;
 mod telegram_bot;
+mod util;
 
 use miette::Result;
 use std::sync::Arc;
@@ -24,6 +25,7 @@ async fn main() -> Result<()> {
 
     let (sched_send, sched_recv) = mpsc::unbounded_channel();
     let (telegram_send, telegram_recv) = mpsc::unbounded_channel();
+    let telegram_send_clone = telegram_send.clone();
 
     // Initialize and run subsystems
     Toplevel::new()
@@ -31,7 +33,7 @@ async fn main() -> Result<()> {
             scheduler::subsystem_handler(
                 opts_arc1,
                 sched_recv,
-                telegram_send,
+                telegram_send_clone,
                 cf_client_arc1,
                 subsys,
             )
@@ -39,6 +41,7 @@ async fn main() -> Result<()> {
         .start("telegram bot", move |subsys| {
             telegram_bot::subsystem_handler(
                 opts_arc2,
+                telegram_send,
                 telegram_recv,
                 sched_send,
                 cf_client_arc2,

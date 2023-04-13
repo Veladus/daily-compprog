@@ -16,7 +16,7 @@ async fn update(
     telegram_send: &mpsc::UnboundedSender<TelegramControlCommand>,
     cf_client: &codeforces::Client,
 ) -> Result<()> {
-    let channel_state = util::get_channel_state(chat_id, telegram_send).await?;
+    let channel_state = crate::util::get_channel_state(chat_id, telegram_send).await?;
 
     let submissions_per_handle: HashMap<codeforces::Handle, Vec<codeforces::Submission>> =
         stream::iter(channel_state.registered_users().values())

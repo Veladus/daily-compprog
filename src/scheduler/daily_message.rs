@@ -3,86 +3,20 @@ use crate::options::Options;
 use crate::scheduler::{util, MyScheduler, SchedulerStorage};
 use crate::telegram_bot::TelegramControlCommand;
 use crate::telegram_bot::TelegramControlCommand::SetAndNotifyDailyProblem;
-use futures::StreamExt;
-use miette::{IntoDiagnostic, Result};
-use std::collections::hash_map::DefaultHasher;
-use std::collections::HashSet;
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use teloxide::prelude::*;
 use tokio::sync::{mpsc, RwLock};
-use xorshift::{Rng, SeedableRng, Xorshift128};
+use miette::{Result, IntoDiagnostic};
 
 async fn daily_message(
     chat_id: ChatId,
     telegram_send: &mpsc::UnboundedSender<TelegramControlCommand>,
     cf_client: &codeforces::Client,
 ) -> Result<()> {
-    let channel_state = util::get_channel_state(chat_id, telegram_send).await?;
-
-    let mut rng: Xorshift128 = {
-        let unix_time_s = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .into_diagnostic()?
-            .as_secs();
-        let chat_hash = {
-            let mut hasher = DefaultHasher::new();
-            chat_id.hash(&mut hasher);
-            hasher.finish()
-        };
-        let states = [unix_time_s, chat_hash];
-        SeedableRng::from_seed(&states[..])
-    };
-
-    let known_problems: HashSet<codeforces::Problem> = {
-        futures::stream::iter(channel_state.registered_users().values())
-            .filter_map(|handle| async {
-                match handle.get_submissions(cf_client).await {
-                    Ok(submissions) => Some(submissions),
-                    Err(err) => {
-                        log::warn!("Error getting submissions for {}\n{}", handle.as_str(), err);
-                        None
-                    }
-                }
-            })
-            .flat_map(|submissions| {
-                futures::stream::iter(submissions.into_iter().map(|submission| submission.problem))
-            })
-            .collect()
-            .await
-    };
+    let channel_state = crate::util::get_channel_state(chat_id, telegram_send).await?;
 
     log::info!("Starting to prepare daily message for {chat_id:?}");
-    let problem = loop {
-        let tag_index = (rng.next_u64() as usize) % codeforces::TAGS.len();
-        let problems = cf_client
-            .get_problems_by_tag(std::iter::once(codeforces::TAGS[tag_index]))
-            .await?;
-        let mut problems: Vec<_> = problems
-            .into_iter()
-            .filter(|problem| {
-                problem.rating.map_or(false, |rating| {
-                    channel_state.rating_range().contains(&rating)
-                }) && !known_problems.contains(problem)
-            })
-            .collect();
-        log::debug!(
-            "For tag {} in chat {:?} there are {} admissible problems",
-            codeforces::TAGS[tag_index],
-            chat_id,
-            problems.len()
-        );
-
-        if !problems.is_empty() {
-            break problems.swap_remove((rng.next_u64() as usize) % problems.len());
-        }
-        log::warn!(
-            "Tag {} has no viable problems in chat {:?}",
-            codeforces::TAGS[tag_index],
-            chat_id
-        );
-    };
+    let problem = channel_state.find_daily_problem(cf_client, chat_id).await?;
 
     log::info!("Sending daily message to {:?}", chat_id);
     telegram_send

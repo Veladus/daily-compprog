@@ -15,6 +15,7 @@ pub use controller::TelegramControlCommand;
 
 pub async fn subsystem_handler(
     options: Arc<options::Options>,
+    telegram_send: mpsc::UnboundedSender<TelegramControlCommand>,
     mut telegram_recv: mpsc::UnboundedReceiver<TelegramControlCommand>,
     sched_send: mpsc::UnboundedSender<SchedulerControlCommand>,
     cf_client: Arc<codeforces::Client>,
@@ -26,7 +27,7 @@ pub async fn subsystem_handler(
     let bot = Arc::new(Bot::from_env());
     let storage = dispatcher::create_storage(options.as_ref()).await?;
     let (shutdown_token, mut join_handle) =
-        dispatcher::setup(bot.clone(), sched_send, storage.clone(), cf_client).await;
+        dispatcher::setup(bot.clone(), telegram_send, sched_send, storage.clone(), cf_client).await;
 
     log::info!("Started Telegram Bot");
 
