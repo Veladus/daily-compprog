@@ -1,6 +1,6 @@
 use crate::{codeforces, options};
-use miette::{IntoDiagnostic, Result};
-use std::sync::Arc;
+use miette::{IntoDiagnostic, Result, GraphicalReportHandler};
+use std::{sync::Arc, borrow::Borrow};
 use teloxide::Bot;
 use tokio::sync::mpsc;
 use tokio_graceful_shutdown::SubsystemHandle;
@@ -36,9 +36,16 @@ pub async fn subsystem_handler(
         let bot_clone = bot.clone();
         let storage_clone = storage.clone();
         tokio::spawn(async move {
-            controller::handle(command, bot_clone, storage_clone)
-                .await
-                .unwrap()
+            match controller::handle(command, bot_clone, storage_clone)
+                .await {
+                    Ok(_) => {},
+                    Err(report) => {
+                        let handler = GraphicalReportHandler::new();
+                        let mut rendered_report = String::new();
+                        handler.render_report(&mut rendered_report, report.borrow()).expect("Could not render error");
+                        log::error!("Error in handling TelegramCommand.\n{}",rendered_report);
+                    }
+                }
         })
     };
     // wait for telegram client to end (by panic), or shutdown request

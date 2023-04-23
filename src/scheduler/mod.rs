@@ -2,7 +2,8 @@ use crate::telegram_bot::TelegramControlCommand;
 use crate::{codeforces, options};
 use async_cron_scheduler::{JobId, Scheduler};
 use chrono::Local;
-use miette::{IntoDiagnostic, Result};
+use miette::{IntoDiagnostic, Result, GraphicalReportHandler};
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use teloxide::prelude::*;
@@ -53,7 +54,7 @@ pub async fn subsystem_handler(
             cf_client.clone(),
         );
         tokio::spawn(async move {
-            controller::handle(
+            match controller::handle(
                 command,
                 options_clone,
                 storage_clone,
@@ -62,7 +63,17 @@ pub async fn subsystem_handler(
                 cf_client_clone,
             )
             .await
-            .unwrap()
+            {
+                Ok(_) => {}
+                Err(report) => {
+                    let handler = GraphicalReportHandler::new();
+                    let mut rendered_report = String::new();
+                    handler
+                        .render_report(&mut rendered_report, report.borrow())
+                        .expect("Could not render error");
+                    log::error!("Error in handling SchedulerCommand.\n{}", rendered_report);
+                }
+            }
         })
     };
     // main control loop
