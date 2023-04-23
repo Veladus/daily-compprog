@@ -53,7 +53,7 @@ pub async fn handle(
                 .send(cloned_state)
                 .map_err(|_| miette!("Could not send channel state for {:?}", chat_id))
         }
-        SetAndNotifyDailyProblem { chat_id, problem } => {
+        SetAndNotifyDailyProblem { chat_id, problem: new_problem } => {
             let mut state: ChannelState = storage
                 .clone()
                 .get_dialogue(chat_id)
@@ -68,21 +68,21 @@ pub async fn handle(
                 state
                     .archived_daily_messages
                     .entry(current_problem.clone())
-                    .or_default()
+                    .or_insert_with(Default::default)
                     .push(current_message.clone());
             }
 
             // update message
-            let message = bot
+            let new_message = bot
                 .send_message(
                     chat_id,
-                    state.message_text_for_problem(&problem, &HashMap::new())?,
+                    state.message_text_for_problem(&new_problem, &HashMap::new())?,
                 )
                 .await
                 .into_diagnostic()?;
-            state.current_daily_message = Some(message);
+            state.current_daily_message = Some(new_message);
             // update problem
-            state.current_daily_problem = Some(problem);
+            state.current_daily_problem = Some(new_problem);
 
             storage
                 .update_dialogue(chat_id, state)
