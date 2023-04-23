@@ -1,4 +1,4 @@
-use crate::codeforces;
+use crate::codeforces::{self, Problem};
 use futures::StreamExt;
 use miette::{IntoDiagnostic, Result};
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ use std::hash::{Hash, Hasher};
 use std::ops::RangeInclusive;
 use std::time::{SystemTime, UNIX_EPOCH};
 use teloxide::prelude::*;
-use xorshift::{SeedableRng, Xorshift128, Rng};
+use xorshift::{Rng, SeedableRng, Xorshift128};
 
 const DEFAULT_RATING_RANGE: RangeInclusive<u64> = 2000..=2400;
 
@@ -19,7 +19,8 @@ pub struct ChannelState {
     pub(super) rating_range: Option<RangeInclusive<u64>>,
     pub(super) current_daily_problem: Option<codeforces::Problem>,
     pub(super) current_daily_message: Option<Message>,
-    pub(super) archived_daily_messages: HashMap<codeforces::Problem, Vec<Message>>,
+    pub(super) archived_daily_messages: HashMap<codeforces::ProblemIdentifier, Vec<Message>>,
+    pub(super) problem_by_identifier: HashMap<codeforces::ProblemIdentifier, Problem>,
 }
 
 impl ChannelState {
@@ -83,9 +84,10 @@ impl ChannelState {
             let mut problems: Vec<_> = problems
                 .into_iter()
                 .filter(|problem| {
-                    problem.rating.map_or(false, |rating| {
-                        self.rating_range().contains(&rating)
-                    }) && !known_problems.contains(problem)
+                    problem
+                        .rating
+                        .map_or(false, |rating| self.rating_range().contains(&rating))
+                        && !known_problems.contains(problem)
                 })
                 .collect();
             log::debug!(

@@ -38,7 +38,7 @@ async fn update(
 
     let status_per_problem = {
         let mut status_per_problem: HashMap<
-            codeforces::Problem,
+            codeforces::ProblemIdentifier,
             HashMap<codeforces::Handle, codeforces::VerdictCategory>,
         > = HashMap::new();
 
@@ -46,7 +46,7 @@ async fn update(
             for submission in submissions {
                 if let Some(verdict) = submission.verdict {
                     status_per_problem
-                        .entry(submission.problem)
+                        .entry(submission.problem.identifier()?)
                         .or_insert_with(Default::default)
                         .entry(handle.clone())
                         .and_modify(|previous_category| {

@@ -22,8 +22,10 @@ pub enum TelegramControlCommand {
     },
     UpdateSolvingStatus {
         chat_id: ChatId,
-        status:
-            HashMap<codeforces::Problem, HashMap<codeforces::Handle, codeforces::VerdictCategory>>,
+        status: HashMap<
+            codeforces::ProblemIdentifier,
+            HashMap<codeforces::Handle, codeforces::VerdictCategory>,
+        >,
     },
 }
 
@@ -53,7 +55,10 @@ pub async fn handle(
                 .send(cloned_state)
                 .map_err(|_| miette!("Could not send channel state for {:?}", chat_id))
         }
-        SetAndNotifyDailyProblem { chat_id, problem: new_problem } => {
+        SetAndNotifyDailyProblem {
+            chat_id,
+            problem: new_problem,
+        } => {
             let mut state: ChannelState = storage
                 .clone()
                 .get_dialogue(chat_id)
@@ -67,7 +72,7 @@ pub async fn handle(
             {
                 state
                     .archived_daily_messages
-                    .entry(current_problem.clone())
+                    .entry(current_problem.identifier()?)
                     .or_insert_with(Default::default)
                     .push(current_message.clone());
             }
@@ -81,9 +86,14 @@ pub async fn handle(
                 .await
                 .into_diagnostic()?;
             state.current_daily_message = Some(new_message);
+
             // update problem
+            state
+                .problem_by_identifier
+                .insert(new_problem.identifier()?, new_problem.clone());
             state.current_daily_problem = Some(new_problem);
 
+            // save to storage
             storage
                 .update_dialogue(chat_id, state)
                 .await
@@ -115,7 +125,7 @@ pub async fn handle(
                 changed |= update_message(
                     &saved_state,
                     daily_problem,
-                    status.get(daily_problem).unwrap_or(&default_map),
+                    status.get(&daily_problem.identifier()?).unwrap_or(&default_map),
                     &bot,
                     daily_message,
                 )
@@ -123,12 +133,14 @@ pub async fn handle(
             }
 
             // update archived messages
-            for (problem, messages) in state.archived_daily_messages.iter_mut() {
+            for (problem_id, messages) in state.archived_daily_messages.iter_mut() {
                 for message in messages.iter_mut() {
                     changed |= update_message(
                         &saved_state,
-                        problem,
-                        status.get(problem).unwrap_or(&default_map),
+                        state.problem_by_identifier.get(problem_id).ok_or_else(|| {
+                            miette!("For an archived Problem Identifiere there is no known Problem")
+                        })?,
+                        status.get(problem_id).unwrap_or(&default_map),
                         &bot,
                         message,
                     )
@@ -154,7 +166,11 @@ async fn update_message(
     bot: &Bot,
     message: &mut Message,
 ) -> Result<bool> {
-    log::trace!("update_message:\n\tproblem({:?})\n\tstatus({:?})", problem.identifier()?, status);
+    log::trace!(
+        "update_message:\n\tproblem({:?})\n\tstatus({:?})",
+        problem.identifier()?,
+        status
+    );
     let new_text = channel.message_text_for_problem(problem, status)?;
 
     if new_text
