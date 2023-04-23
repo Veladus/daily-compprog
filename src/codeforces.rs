@@ -178,12 +178,12 @@ impl Problem {
     }
 
     pub fn identifier(&self) -> Result<ProblemIdentifier> {
-        Ok(format!(
+        Ok(ProblemIdentifier(format!(
             "{}/{}",
             self.contest_id
                 .ok_or_else(|| miette!("Don't know how to identify problem without contest_id"))?,
             self.index
-        ))
+        )))
     }
 }
 
