@@ -154,6 +154,7 @@ async fn update_message(
     bot: &Bot,
     message: &mut Message,
 ) -> Result<bool> {
+    log::trace!("update_message:\n\tproblem({:?})\n\tstatus({:?})", problem.identifier()?, status);
     let new_text = channel.message_text_for_problem(problem, status)?;
 
     if new_text

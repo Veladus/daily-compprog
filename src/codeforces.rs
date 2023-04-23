@@ -57,6 +57,10 @@ pub const TAGS: &[&str] = &[
 #[serde(transparent)]
 pub struct Handle(String);
 
+#[derive(Debug, Clone, Deserialize, Serialize, Hash, Ord, PartialOrd, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct ProblemIdentifier(String);
+
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
 pub struct Problem {
     pub index: String,
@@ -172,6 +176,15 @@ impl Problem {
             self.index
         ))
     }
+
+    pub fn identifier(&self) -> Result<ProblemIdentifier> {
+        Ok(format!(
+            "{}/{}",
+            self.contest_id
+                .ok_or_else(|| miette!("Don't know how to identify problem without contest_id"))?,
+            self.index
+        ))
+    }
 }
 
 impl Verdict {
@@ -263,7 +276,11 @@ impl Client {
             .ok_or_else(|| miette!("Codeforces did not provide a result"))?;
 
         // cache result
-        self.cache.lock().await.borrow_mut().insert(String::from(url), Box::new(result.clone()));
+        self.cache
+            .lock()
+            .await
+            .borrow_mut()
+            .insert(String::from(url), Box::new(result.clone()));
 
         Ok(result)
     }
